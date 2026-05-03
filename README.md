@@ -13,6 +13,7 @@ DaemonCraft is a scalable ecosystem where persistent AI companions live inside a
 - `agent-bridge/` — Python trigger bridge for agent orchestration
 - `docker/` — Docker configurations and overrides
 - `docs/` — Architecture docs, runbooks, and design records
+  - [`docs/privacy.md`](docs/privacy.md) — what we log, retention, and parent-deletion runbook
 
 ## Quick Start
 
