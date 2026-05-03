@@ -56,9 +56,9 @@ services:
       # Pinned version IDs so restarts are deterministic. Bumps land in
       # follow-up PRs after smoke-test. See docs/server-overhaul.md.
       # Geyser is unpinned because it only ships beta-tagged continuous
-      # builds on Modrinth; that's why MODRINTH_ALLOWED_VERSION_TYPE
-      # is "beta" rather than "release" — itzg accepts both.
-      MODRINTH_PROJECTS: "geyser,luckperms:OrIs0S6b,coreprotect:HD2IvrxS"
+      # builds on Modrinth; MODRINTH_ALLOWED_VERSION_TYPE=beta accepts
+      # both beta and release, so the pinned plugins still resolve.
+      MODRINTH_PROJECTS: "geyser,luckperms:OrIs0S6b,coreprotect:HD2IvrxS,skinsrestorer:2PjHGlwd,decentholograms:t9gURTWO,tab-was-taken:FewsxQmS"
       MODRINTH_ALLOWED_VERSION_TYPE: "beta"
 
       # RCON — enabled by default in Purpur; password is pinned here so the
