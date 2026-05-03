@@ -8,7 +8,20 @@ zero-tolerance group-slur list (hard-block).
 ## Install
 
 ChatFilter doesn't (yet) support an `include:` directive, so the entries
-need to live in the plugin's main `wordFilters.yml`. Two equally OK paths:
+need to live in the plugin's main `wordFilters.yml`. The recommended path
+is the installer script:
+
+```bash
+scripts/install-chatfilter-es.sh
+```
+
+It detects whether the entries are already merged (idempotent — uses an
+`AddedBy: DC-131` sentinel), appends them if not, and restarts minecraft
+so ChatFilter rebuilds its filter set. Re-running on an already-installed
+server is a no-op.
+
+If you'd rather do it by hand, the script is short and the manual paths
+below are equivalent.
 
 **A) Append** — add the `ChatFilter:` children to the plugin's existing file,
 then **restart the server** (see gotcha below):
