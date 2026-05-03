@@ -2,7 +2,10 @@ version: "3.8"
 
 services:
   minecraft:
-    image: itzg/minecraft-server:latest
+    # Pinned to a digest so restarts are deterministic. Bump deliberately
+    # after a smoke test; do NOT switch back to :latest. See
+    # docs/server-overhaul.md for the upgrade procedure (DC-125).
+    image: itzg/minecraft-server@sha256:629762aaf864e109a35e00b11d701cfc6b2bddca4331944aefde0a352ebb9fd4
     container_name: daemoncraft-minecraft
     restart: unless-stopped
     network_mode: host
@@ -21,7 +24,11 @@ services:
 
       # --- Gameplay / Dev Settings ---
       ONLINE_MODE: "false"
-      DIFFICULTY: "peaceful"
+      # easy permits hostile mob spawns (rolemaster narrative tension) while
+      # keeping kid-friendly damage scaling. Per-cast overrides via in-game
+      # /difficulty are still allowed (Pamplinas can switch to peaceful for
+      # specific scenes via mc_command).
+      DIFFICULTY: "easy"
       CREATE_CONSOLE_IN_PIPE: "true"
       ALLOW_FLIGHT: "true"
       ENABLE_COMMAND_BLOCK: "true"
