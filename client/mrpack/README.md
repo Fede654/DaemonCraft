@@ -47,7 +47,27 @@ shaders:
 4. `scripts/build-mrpack.sh` — produces `dist/daemoncraft-<version>.mrpack`.
 
 The build script resolves URLs and checksums fresh from the Modrinth API
-on every build, so nothing is cached locally.
+on every build, so nothing is cached locally. **This means the build needs
+network access** and is sensitive to Modrinth API rate limits (~300 req/min
+unauthenticated; we issue ~15 per build). Each request has a 30 s timeout.
+
+### Offline / air-gapped builds
+
+If you're on a flaky connection or behind a firewall that blocks Modrinth:
+
+1. Pre-fetch every jar/zip listed in `manifest.toml` once when you have
+   connectivity, into `client/mrpack/overrides/mods/` (for mod jars) and
+   `client/mrpack/overrides/resourcepacks/` (for RPs). Anything in
+   `overrides/` ships verbatim inside the `.mrpack` and skips the
+   Modrinth-App download step at install time.
+2. Build as usual. The script still needs to query Modrinth for hashes
+   to populate `modrinth.index.json`; if that's unavailable, the
+   `formatVersion: 1` schema requires at least one entry, so this is a
+   limitation rather than a true offline mode. For fully offline builds,
+   author `modrinth.index.json` by hand — Modrinth App will then trust
+   the `overrides/` files and skip its own download.
+
+For routine bumps from a normal dev box, the live API path is fine.
 
 ## Hosting
 
