@@ -63,7 +63,7 @@ services:
       # Geyser is unpinned because it only ships beta-tagged continuous
       # builds on Modrinth; MODRINTH_ALLOWED_VERSION_TYPE=beta accepts
       # both beta and release, so the pinned plugins still resolve.
-      MODRINTH_PROJECTS: "geyser,luckperms:OrIs0S6b,coreprotect:HD2IvrxS,skinsrestorer:2PjHGlwd,decentholograms:t9gURTWO,tab-was-taken:FewsxQmS,chatfilter-zepsizola:UlCRrLx8"
+      MODRINTH_PROJECTS: "geyser,luckperms:OrIs0S6b,coreprotect:HD2IvrxS,skinsrestorer:2PjHGlwd,decentholograms:t9gURTWO,tab-was-taken:FewsxQmS,chatfilter-zepsizola:UlCRrLx8,plan:egk2fxRL"
       MODRINTH_ALLOWED_VERSION_TYPE: "beta"
 
       # RCON — enabled by default in Purpur; password is pinned here so the
