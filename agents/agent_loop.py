@@ -37,7 +37,14 @@ METRICS_DIR = Path(os.getenv("MC_METRICS_DIR", str(_METRICS_DIR_DEFAULT)))
 
 
 def _emit_metric(kind: str, **fields) -> None:
-    """Append a JSON line to ~/.hermes/metrics/<cast>/<date>.jsonl. Best-effort."""
+    """Append a JSON line to ~/.hermes/metrics/<cast>/<date>.jsonl. Best-effort.
+
+    Uses a single os.write() with O_APPEND so writes shorter than PIPE_BUF
+    (typically 4 KB on Linux) are POSIX-atomic — even with concurrent writers
+    or a process kill mid-write, you can't get a half-written line. The
+    report script tolerates truncated lines anyway, but this prevents them
+    in the first place.
+    """
     if not METRICS_CAST:
         return
     try:
@@ -53,8 +60,12 @@ def _emit_metric(kind: str, **fields) -> None:
             "kind": kind,
             **fields,
         }
-        with path.open("a") as f:
-            f.write(json.dumps(record, separators=(",", ":")) + "\n")
+        line = (json.dumps(record, separators=(",", ":")) + "\n").encode("utf-8")
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, line)
+        finally:
+            os.close(fd)
     except Exception:
         # Metrics must never break the heartbeat loop.
         pass
