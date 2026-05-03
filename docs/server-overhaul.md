@@ -73,21 +73,68 @@ This persists into `level.dat`. New worlds pick up the env value at generation.
 
 ---
 
-## Backup + restore (DC-126 — pending)
+## Backup + restore (DC-126)
 
-Procedure lands here when DC-126 ships the `mc-backup` sidecar.
+### Sidecar: `itzg/mc-backup`
+
+Pinned digest: `itzg/mc-backup@sha256:7ffba80d2c6752df8d1669451de928f9e7b2d94866cd84951af6e7bc5bed1496`
+
+Schedule: daily (`BACKUP_INTERVAL=24h`, 5-minute initial delay).
+Destination: `${BACKUP_DEST}` from `.env` (default: `./server/backups/` local placeholder).
+
+**Open item — final destination**: move `BACKUP_DEST` to Hetzner Storage Box or Backblaze B2 once the project decides; only the volume mapping in `.env` and `docker-compose.yml` changes, sidecar logic stays.
+
+**How it works**: on each scheduled run, mc-backup connects via RCON (`RCON_PASSWORD` from `.env`) and issues `save-off → save-all flush → snapshot → save-on`. The snapshot is a `.tar.gz` of `/data/`.
+
+**Test a restore**:
+```bash
+mkdir /tmp/restore-test
+cd /tmp/restore-test
+tar -xzf ~/REPOS/daemoncraft/server/backups/daemoncraft-YYYYMMDD-HHMMSS.tar.gz
+# Mount into a scratch itzg container and verify world loads
+docker run --rm -v /tmp/restore-test:/data \
+  -e EULA=true -e TYPE=PURPUR -e VERSION=1.21.11 \
+  itzg/minecraft-server@sha256:629762...
+```
+
+**Retention**: 30 days (controlled by `PRUNE_BACKUPS_DAYS=30`).
 
 ---
 
-## CoreProtect rollback (DC-126 — pending)
+## CoreProtect (DC-126)
 
-Procedure lands here when CoreProtect installs.
+Installed: v23.1 (Modrinth `HD2IvrxS`). Note: 1.21.11 is not yet listed in Modrinth's game-version metadata but 23.1 loads and enables cleanly on Purpur 1.21.11 (verified 2026-05-03). Backend: SQLite.
+
+**Test rollback**:
+```bash
+# In-game, deliberately place/break a test block as a non-admin user
+docker exec daemoncraft-minecraft rcon-cli "co rollback u:<username> t:1h r:10"
+```
+
+**Alert on bulk griefing**: CoreProtect logs everything; for active monitoring wire a log watcher to `server/data/plugins/CoreProtect/` (future DC-132 scope).
 
 ---
 
-## LuckPerms group definitions (DC-126 — pending)
+## LuckPerms group definitions (DC-126)
 
-Group hierarchy and permission grammar land here.
+Installed: v5.5.17-bukkit (Modrinth `OrIs0S6b`). Storage: H2.
+
+Group hierarchy and `groups.json` import procedure: see `server/plugins/luckperms/README.md`.
+
+| Group | Scope |
+|---|---|
+| `default` | All players — `/help`, `/msg`, `/me`, `/reply` |
+| `pamplina-team` | Narrative operator — time, weather, gamemode, tp, give, effect, difficulty, say, title, summon, kill |
+| `op` | Full wildcard (`*`) — human admin only |
+
+**Emptying `op.json`**: once LuckPerms is the authority, `op.json` should be empty or contain only the admin UUID. Run:
+```bash
+docker exec daemoncraft-minecraft rcon-cli "deop <any-legacy-op-username>"
+```
+then add them to the `op` group:
+```bash
+docker exec daemoncraft-minecraft rcon-cli "lp user <username> parent add op"
+```
 
 ---
 
