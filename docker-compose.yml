@@ -38,6 +38,9 @@ services:
       # username can connect AS that name; the whitelist is the floor.
       # Manage with `whitelist add <name>` / `whitelist remove <name>` via rcon
       # or by editing server/data/whitelist.json directly.
+      # ⚠️ FIRST-RUN: whitelist.json starts empty after this change; add
+      # current players BEFORE next restart or they'll be kicked. See
+      # server/plugins/whitelist.README.md.
       ENFORCE_WHITELIST: "true"
       VIEW_DISTANCE: "10"
       SIMULATION_DISTANCE: "10"
