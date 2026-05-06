@@ -77,6 +77,20 @@ services:
 
       # --- Logging ---
       TZ: "UTC"
+
+      # --- Resource Pack (Patrix 32x, DC-135) ---
+      # Patrix realistic textures with vanilla colors, custom-made for shaders.
+      # Players are prompted to download on join. URL is the Modrinth CDN.
+      # SHA1 verified at download time (see server/resourcepacks/Patrix_*.zip.sha1).
+      RESOURCE_PACK: "https://cdn.modrinth.com/data/olO1TaXd/versions/LAQEoIb7/Patrix_1.21.4_32x_basic.zip"
+      RESOURCE_PACK_SHA1: "0e1a9b676eeb99a626d7797253596483106d5205"
+      RESOURCE_PACK_ENFORCE: "false"
+
+      # --- Datapack: Terralith worldgen (DC-135) ---
+      # Terralith adds 95+ biomes via datapack. Placed in world/datapacks/;
+      # affects NEW chunks only (chunks already generated remain vanilla).
+      # ⚠️ Do NOT remove from an existing world; this can corrupt terrain seams.
+      LEVEL_TYPE: "default"
     volumes:
       - ./server/data:/data
       # Mount Denizen scripts from repo (read-only)
