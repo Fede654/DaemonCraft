@@ -265,12 +265,20 @@ The active Hermes install at `~/.hermes/hermes-agent` is **NEVER** to be directl
 ### Plugin List (confirmed loaded)
 - `multiverse-core.jar` (4.3.14) — world management
 - `worldedit-bukkit-7.4.2.jar` — WorldEdit
+- `worldguard-bukkit-7.0.16.jar` — region protection, flags, PvP toggles (Set 04 Prime)
+- `spark.jar` — TPS profiler, memory diagnostics, lag detection (Set 04 Prime)
 - `citizens2.jar` + `Citizens/` — NPC framework
 - `denizen.jar` + `Denizen/` — scripting
 - `geyser-spigot.jar` + `Geyser-Spigot/` — Bedrock bridge
 - `floodgate-spigot.jar` + `floodgate/` — auth bridge
 - `LibsDisguises.jar` + `LibsDisguises/` — entity disguises
 - `packetevents-spigot-2.12.1.jar` — packet API
+
+### Observability & Protection (Set 04 Prime)
+
+**spark** — `/spark tps`, `/spark profiler`, `/spark health`. Essential for diagnosing lag on the 20-player server. Auto-downloaded by itzg via Modrinth (`spark:version_id`).
+
+**WorldGuard** — Region protection with flags. Requires WorldEdit as dependency. Both auto-downloaded via Modrinth (`worldedit:p8T2aZ8U,worldguard:EZl3moba`). Key commands: `/rg define <name>`, `/rg flag <name> pvp deny`.
 
 ## Cast.conf Persistence After Reboot
 
