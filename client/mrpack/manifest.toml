@@ -106,9 +106,9 @@ version_id = "xN57JJts"           # 1.10.4 (vanilla-format RP, version-agnostic)
 slug = "better-leaves"
 version_id = "XWtayRKd"           # 9.5 (vanilla-format RP)
 
-[[resourcepacks]]
-slug = "clear-glass"
-version_id = "WF83I2Cp"           # 1.2.1 — vanilla-format RP, forward-compatible
+# Clear Glass se distribuye solo via overrides/ (pack_format 64 corregido manualmente).
+# NO se incluye en el manifest para evitar que Modrinth descargue la versión original
+# con pack_format incompatible.
 
 # --- Shaders (included, off by default) ---
 # Complementary Reimagined ships with the pack but is NOT auto-enabled.
