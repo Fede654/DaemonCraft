@@ -547,7 +547,7 @@ async function createBotImpl() {
     try { bot.quit(); } catch {}
     bot = null;
     botReady = false;
-    await sleep(2000); // longer delay for server to clean up session
+    await sleep(5000); // longer delay for server to clean up session
   }
 
   return new Promise((resolve, reject) => {
@@ -558,11 +558,13 @@ async function createBotImpl() {
       port: config.mc.port,
       username: config.mc.username,
       auth: config.mc.auth,
+      version: '1.21.11',
+      connectTimeout: 120000,
     });
 
     const timeout = setTimeout(() => {
       reject(new Error(`Connection timeout — couldn't reach ${config.mc.host}:${config.mc.port}`));
-    }, 30000);
+    }, 120000);
 
     bot.once('spawn', () => {
       clearTimeout(timeout);
