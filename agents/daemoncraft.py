@@ -39,7 +39,7 @@ CASTS_DIR = AGENTS_DIR / "casts"
 PROMPTS_DIR = AGENTS_DIR / "prompts"
 RUN_DIR_BASE = Path.home() / ".local" / "share" / "daemoncraft"
 
-DEFAULT_MC_HOST = "localhost"
+DEFAULT_MC_HOST = "10.10.20.240"
 DEFAULT_MC_PORT = 25565
 
 # Base profile and SOUL for all DaemonCraft agents
