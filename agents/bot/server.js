@@ -84,7 +84,11 @@ import {
   recipeDiagnostics,
   recipeIngredientCounts,
 } from './lib/action_feedback.js';
-import { Camera } from 'mine-photo';
+// mine-photo is dead code — prismarine-viewer + puppeteer replaced it (see line 253).
+// The package is broken on Node 22 (fs.globSync at module load) so we stub Camera here.
+class Camera {
+  constructor() { throw new Error('mine-photo Camera disabled — use prismarine-viewer screenshot path'); }
+}
 import { mineflayer as mineflayerViewer } from 'prismarine-viewer';
 import puppeteer from 'puppeteer';
 
@@ -117,6 +121,94 @@ loadRegistry();
 function loadLocations() {
   try { return JSON.parse(fs.readFileSync(LOCATIONS_FILE, 'utf8')); }
   catch { return {}; }
+}
+
+// Pre-flight validation: extract entity/item/block/effect references from a Minecraft
+// command and verify them against the loaded registry. Returns null if valid,
+// or a human-readable error string if any reference is unknown.
+function validateCommand(command) {
+  if (!MC_REGISTRY) return null; // registry missing — skip validation
+  const errors = [];
+
+  // Helper: strip minecraft: namespace
+  const stripNs = (s) => s.replace(/^minecraft:/, '');
+
+  // Build lookup sets once (lazy)
+  const validEntities = new Set(MC_REGISTRY.entities.map(e => e.name));
+  const validItems = new Set(MC_REGISTRY.items.map(i => i.name));
+  const validBlocks = new Set(MC_REGISTRY.blocks.map(b => b.name));
+  const validEffects = new Set(MC_REGISTRY.effects.map(e => e.name));
+
+  const cmd = command.trim().toLowerCase();
+
+  // /summon <entity> [...]
+  const summonMatch = cmd.match(/^\/summon\s+(\S+)/);
+  if (summonMatch) {
+    const name = stripNs(summonMatch[1]);
+    if (!validEntities.has(name)) {
+      errors.push(`Unknown entity '${summonMatch[1]}' (not in registry for ${MC_REGISTRY._meta?.version || 'this version'})`);
+    }
+  }
+
+  // /give <player> <item> [...]
+  const giveMatch = cmd.match(/^\/give\s+\S+\s+(\S+)/);
+  if (giveMatch) {
+    const name = stripNs(giveMatch[1]);
+    if (!validItems.has(name)) {
+      errors.push(`Unknown item '${giveMatch[1]}' (not in registry for ${MC_REGISTRY._meta?.version || 'this version'})`);
+    }
+  }
+
+  // /setblock <x> <y> <z> <block> [...]
+  const setblockMatch = cmd.match(/^\/setblock\s+\S+\s+\S+\s+\S+\s+(\S+)/);
+  if (setblockMatch) {
+    const name = stripNs(setblockMatch[1]);
+    if (!validBlocks.has(name)) {
+      errors.push(`Unknown block '${setblockMatch[1]}' (not in registry for ${MC_REGISTRY._meta?.version || 'this version'})`);
+    }
+  }
+
+  // /fill <x1> <y1> <z1> <x2> <y2> <z2> <block> [...]
+  const fillMatch = cmd.match(/^\/fill\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\S+)/);
+  if (fillMatch) {
+    const name = stripNs(fillMatch[1]);
+    if (!validBlocks.has(name)) {
+      errors.push(`Unknown block '${fillMatch[1]}' (not in registry for ${MC_REGISTRY._meta?.version || 'this version'})`);
+    }
+  }
+
+  // @e[type=<entity>] anywhere in command
+  const typeMatches = cmd.matchAll(/type=(\S+)/g);
+  for (const m of typeMatches) {
+    const name = stripNs(m[1]);
+    if (!validEntities.has(name)) {
+      errors.push(`Unknown entity type '${m[1]}' in selector (not in registry for ${MC_REGISTRY._meta?.version || 'this version'})`);
+    }
+  }
+
+  // /effect give <target> <effect> [...]
+  const effectMatch = cmd.match(/^\/effect\s+give\s+\S+\s+(\S+)/);
+  if (effectMatch) {
+    const name = stripNs(effectMatch[1]);
+    if (!validEffects.has(name)) {
+      errors.push(`Unknown effect '${effectMatch[1]}' (not in registry for ${MC_REGISTRY._meta?.version || 'this version'})`);
+    }
+  }
+
+  // /data get entity <entity> [...]
+  const dataEntityMatch = cmd.match(/^\/data\s+get\s+entity\s+(\S+)/);
+  if (dataEntityMatch) {
+    // Entity name here is a selector or UUID — skip validation for selectors
+    const target = dataEntityMatch[1];
+    if (!target.startsWith('@')) {
+      const name = stripNs(target);
+      if (!validEntities.has(name)) {
+        errors.push(`Unknown entity '${target}' in /data get entity (not in registry)`);
+      }
+    }
+  }
+
+  return errors.length > 0 ? errors.join('; ') : null;
 }
 function saveLocations(locs) {
   const dir = path.dirname(LOCATIONS_FILE);
@@ -426,7 +518,7 @@ async function createBotImpl() {
     try { bot.quit(); } catch {}
     bot = null;
     botReady = false;
-    await sleep(2000); // longer delay for server to clean up session
+    await sleep(5000); // longer delay for server to clean up session
   }
 
   return new Promise((resolve, reject) => {
@@ -437,11 +529,13 @@ async function createBotImpl() {
       port: config.mc.port,
       username: config.mc.username,
       auth: config.mc.auth,
+      version: '1.21.11',
+      connectTimeout: 120000,
     });
 
     const timeout = setTimeout(() => {
       reject(new Error(`Connection timeout — couldn't reach ${config.mc.host}:${config.mc.port}`));
-    }, 30000);
+    }, 120000);
 
     bot.once('spawn', () => {
       clearTimeout(timeout);
@@ -527,6 +621,27 @@ async function createBotImpl() {
         });
       }, 2000);
 
+      // Teleport detection — cancel navigation when forcibly moved by server
+      let lastPos = null;
+      bot.on('move', () => {
+        if (!bot || !bot.entity || !bot.entity.position) return;
+        const pos = bot.entity.position;
+        if (!lastPos) { lastPos = pos.clone(); return; }
+        const dist = pos.distanceTo(lastPos);
+        if (dist > 5) {
+          // Likely teleported — cancel pathfinder and current task
+          try { bot.pathfinder.setGoal(null); } catch {}
+          try { bot.stopDigging(); } catch {}
+          if (currentTask && currentTask.status === 'running') {
+            currentTask.status = 'cancelled';
+            currentTask.error = `Teleported ${dist.toFixed(1)} blocks by server — navigation cancelled`;
+            broadcastDashboard('task', currentTask);
+          }
+          log(`Teleport detected: moved ${dist.toFixed(1)} blocks — cancelled navigation`);
+        }
+        lastPos = pos.clone();
+      });
+
       // Death tracking
       bot.on('death', () => {
         combatStats.deaths++;
@@ -603,27 +718,10 @@ async function createBotImpl() {
         }, delay);
       });
 
-      // Initialize ray-tracing camera for screenshots
-      try {
-        photoCamera = new Camera(bot);
-        photoCamera.resize(854, 480);
-        photoCamera.samplesPerPixel = 8;        // default 8 (was 16)
-        photoCamera.renderDistance = 48;
-        photoCamera.maxBounces = 2;
-        photoCamera.fov = 90;
-        photoScanReady = false;
-        log('[Photo] Starting initial world scan...');
-        photoScanPromise = photoCamera.scan(48, 24, 48).then(() => {
-          photoScanReady = true;
-          log(`[Photo] Camera scan complete — screenshots ready`);
-        }).catch(err => {
-          log(`[Photo] Camera scan failed: ${err.message}`);
-          photoScanReady = false;
-        });
-        log(`[Photo] Camera initialized, background scan started...`);
-      } catch (err) {
-        log(`[Photo] Camera init failed: ${err.message}`);
-      }
+      // Camera init removed with mine-photo — prismarine-viewer below
+      // serves screenshots now. photoCamera/photoScanReady/photoScanPromise
+      // remain declared at module scope as harmless null/false placeholders
+      // so any older /photo/* request handler that reads them still works.
 
       botReady = true;
       reconnectAttempts = 0;
@@ -3667,6 +3765,13 @@ const httpServer = http.createServer(async (req, res) => {
         if (!command || typeof command !== 'string') {
           return respond(res, 400, { ok: false, error: 'Missing or invalid "command" field' });
         }
+
+        // Pre-flight registry validation (DC-133)
+        const validationError = validateCommand(command);
+        if (validationError) {
+          return respond(res, 400, { ok: false, error: validationError, registry_hint: 'Use GET /registry to browse available entities, items, blocks and effects' });
+        }
+
         const b = ensureBot();
 
         const responses = [];

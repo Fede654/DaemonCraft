@@ -1,7 +1,16 @@
 # Server runtime data
 server/data/
+server/backups/
 server/geyser/*.jar
 server/geyser/logs/
+server/geyser/dumps/
+server/geyser/packs/
+server/geyser/key.pem
+server/geyser/public-key.pem
+server/geyser/saved-refresh-tokens.json
+
+# Local environment overrides
+.env
 server/world/
 server/world_nether/
 server/world_the_end/
@@ -55,3 +64,20 @@ PROJECT.md
 EPIC-*.md
 # docs/ is no longer gitignored — design docs are canonical references
 # docs/archive/ contains outdated docs kept for historical reference
+
+# LuckPerms runtime DB (not gitignored by the server/data catch-all since
+# LP is installed into data/ which is already ignored — this covers the
+# manually tracked copy if someone adds it directly)
+server/plugins/luckperms/*.db
+server/plugins/luckperms/luckperms-h2*
+dist/
+
+# Geyser generated files (DC-126/DC-128 Bedrock support)
+server/geyser/dumps/
+server/geyser/packs/
+server/geyser/key.pem
+server/geyser/public-key.pem
+server/geyser/saved-refresh-tokens.json
+
+# Local environment overrides
+.env

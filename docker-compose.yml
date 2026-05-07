@@ -2,7 +2,10 @@ version: "3.8"
 
 services:
   minecraft:
-    image: itzg/minecraft-server:latest
+    # Pinned to a digest so restarts are deterministic. Bump deliberately
+    # after a smoke test; do NOT switch back to :latest. See
+    # docs/server-overhaul.md for the upgrade procedure (DC-125).
+    image: itzg/minecraft-server@sha256:629762aaf864e109a35e00b11d701cfc6b2bddca4331944aefde0a352ebb9fd4
     container_name: daemoncraft-minecraft
     restart: unless-stopped
     network_mode: host
@@ -11,8 +14,9 @@ services:
       EULA: "true"
       TYPE: "PURPUR"
       VERSION: "1.21.11"
-      SERVER_NAME: "DaemonCraft-Dev"
-      MOTD: "\\u00A72DaemonCraft\\u00A7r Development Server"
+      SERVER_NAME: "Nico's DaemonCraft"
+      MOTD: "Nico's DaemonCraft"
+      SERVER_IP: "10.10.20.240"
 
       # --- Memory ---
       MEMORY: "12G"
@@ -21,12 +25,24 @@ services:
 
       # --- Gameplay / Dev Settings ---
       ONLINE_MODE: "false"
-      DIFFICULTY: "peaceful"
+      # easy permits hostile mob spawns (rolemaster narrative tension) while
+      # keeping kid-friendly damage scaling. Per-cast overrides via in-game
+      # /difficulty are still allowed (Pamplinas can switch to peaceful for
+      # specific scenes via mc_command).
+      DIFFICULTY: "easy"
       CREATE_CONSOLE_IN_PIPE: "true"
       ALLOW_FLIGHT: "true"
       ENABLE_COMMAND_BLOCK: "true"
       SPAWN_PROTECTION: "0"
       MAX_PLAYERS: "20"
+      # Identity gating (DC-131). With ONLINE_MODE=false anyone who knows a
+      # username can connect AS that name; the whitelist is the floor.
+      # Manage with `whitelist add <name>` / `whitelist remove <name>` via rcon
+      # or by editing server/data/whitelist.json directly.
+      # ⚠️ FIRST-RUN: whitelist.json starts empty after this change; add
+      # current players BEFORE next restart or they'll be kicked. See
+      # server/plugins/whitelist.README.md.
+      ENFORCE_WHITELIST: "true"
       VIEW_DISTANCE: "10"
       SIMULATION_DISTANCE: "10"
       GAME_MODE: "survival"
@@ -45,21 +61,93 @@ services:
       # MODPACK: "/modpacks/phi-craft.zip"
       # MODPACK_PLATFORM: ""
 
+      # --- Plugins (auto-installed by itzg from Modrinth) ---
+      # Pinned version IDs so restarts are deterministic. Bumps land in
+      # follow-up PRs after smoke-test. See docs/server-overhaul.md.
+      # Geyser is unpinned because it only ships beta-tagged continuous
+      # builds on Modrinth; MODRINTH_ALLOWED_VERSION_TYPE=beta accepts
+      # both beta and release, so the pinned plugins still resolve.
+      MODRINTH_PROJECTS: "geyser,luckperms:OrIs0S6b,coreprotect:HD2IvrxS,skinsrestorer:2PjHGlwd,decentholograms:t9gURTWO,tab-was-taken:FewsxQmS,chatfilter-zepsizola:UlCRrLx8,plan:egk2fxRL,worldedit:p8T2aZ8U,worldguard:EZl3moba"
+      MODRINTH_ALLOWED_VERSION_TYPE: "beta"
+
+      # RCON — enabled by default in Purpur; password is pinned here so the
+      # mc-backup sidecar can reliably authenticate. Change in .env only.
+      RCON_PASSWORD: ${RCON_PASSWORD:-daemoncraft-rcon}
+      ENABLE_RCON: "true"
+
       # --- Logging ---
       TZ: "UTC"
+
+      # --- Resource Pack (Patrix 32x, DC-135) ---
+      # Patrix realistic textures with vanilla colors, custom-made for shaders.
+      # Players are prompted to download on join. URL is the Modrinth CDN.
+      # SHA1 verified at download time (see server/resourcepacks/Patrix_*.zip.sha1).
+      RESOURCE_PACK: "https://cdn.modrinth.com/data/olO1TaXd/versions/LAQEoIb7/Patrix_1.21.4_32x_basic.zip"
+      RESOURCE_PACK_SHA1: "0e1a9b676eeb99a626d7797253596483106d5205"
+      RESOURCE_PACK_ENFORCE: "false"
+
+      # --- Datapack: Terralith worldgen (DC-135) ---
+      # Terralith adds 95+ biomes via datapack. Placed in world/datapacks/;
+      # affects NEW chunks only (chunks already generated remain vanilla).
+      # ⚠️ Do NOT remove from an existing world; this can corrupt terrain seams.
+      LEVEL_TYPE: "default"
     volumes:
       - ./server/data:/data
       # Mount Denizen scripts from repo (read-only)
       - ./server/plugins/denizen:/data/plugins/Denizen/scripts:ro
       # Mount for manual modpack fallback zip (read-only)
       - ./server/modpacks:/modpacks:ro
+      # Geyser plugin config (versioned in repo). The plugin reads from
+      # plugins/Geyser-Spigot/, so we mount our config tree there. itzg drops
+      # the auto-downloaded jar one level up, in plugins/.
+      - ./server/geyser:/data/plugins/Geyser-Spigot
     tty: true
     stdin_open: true
+    # Bound resource use so a runaway plugin or hot loop cannot OOM the host
+    # (which would also take down redis, bridge, lan-broadcast). Tune to host
+    # capacity; current target is a 16 GB / 8-core box with headroom.
+    mem_limit: 14g
+    cpus: 6.0
     healthcheck:
-      test: mc-health
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/10.10.20.240/25565"]
       start_period: 1m
       interval: 5s
       retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Backup Sidecar (DC-126) — periodic world snapshots with RCON save flush
+  # ---------------------------------------------------------------------------
+  # Destination is a placeholder bind-mount for now. Final destination will
+  # move to Hetzner Storage Box or Backblaze B2 in a follow-up (decision in
+  # plans/DC-126.md "Open Questions"). The sidecar pattern stays the same;
+  # only the destination volume mapping changes.
+  mc-backup:
+    image: itzg/mc-backup@sha256:7ffba80d2c6752df8d1669451de928f9e7b2d94866cd84951af6e7bc5bed1496
+    container_name: daemoncraft-mc-backup
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-24h}
+      INITIAL_DELAY: "5m"
+      PRUNE_BACKUPS_DAYS: "30"
+      RCON_HOST: 10.10.20.240
+      RCON_PORT: "25575"
+      # MUST match the minecraft service default. If they diverge, mc-backup
+      # silently fails to authenticate when the operator hasn't set
+      # RCON_PASSWORD in .env, and backups quietly stop happening.
+      RCON_PASSWORD: ${RCON_PASSWORD:-daemoncraft-rcon}
+      SRC_DIR: /data
+      DEST_DIR: /backups
+      BACKUP_NAME: daemoncraft
+      TZ: UTC
+    volumes:
+      # Read the world from the live server. Read-only would be ideal but
+      # mc-backup needs to call save-off / save-on via RCON, which is fine.
+      - ./server/data:/data:ro
+      # Local placeholder destination; override BACKUP_DEST in .env.
+      - ${BACKUP_DEST:-./server/backups}:/backups
+    depends_on:
+      - minecraft
 
   # ---------------------------------------------------------------------------
   # LAN Discovery Broadcaster — makes dedicated server visible in LAN list
@@ -70,7 +158,7 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      BROADCAST_MOTD: "DaemonCraft Dev Server"
+      BROADCAST_MOTD: "Nico's DaemonCraft"
       BROADCAST_PORT: "25565"
     volumes:
       - ./lan-broadcast/broadcast.py:/broadcast.py:ro

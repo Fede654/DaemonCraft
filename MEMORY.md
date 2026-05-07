@@ -265,12 +265,20 @@ The active Hermes install at `~/.hermes/hermes-agent` is **NEVER** to be directl
 ### Plugin List (confirmed loaded)
 - `multiverse-core.jar` (4.3.14) — world management
 - `worldedit-bukkit-7.4.2.jar` — WorldEdit
+- `worldguard-bukkit-7.0.16.jar` — region protection, flags, PvP toggles (Set 04 Prime)
+- `spark.jar` — TPS profiler, memory diagnostics, lag detection (Set 04 Prime)
 - `citizens2.jar` + `Citizens/` — NPC framework
 - `denizen.jar` + `Denizen/` — scripting
 - `geyser-spigot.jar` + `Geyser-Spigot/` — Bedrock bridge
 - `floodgate-spigot.jar` + `floodgate/` — auth bridge
 - `LibsDisguises.jar` + `LibsDisguises/` — entity disguises
 - `packetevents-spigot-2.12.1.jar` — packet API
+
+### Observability & Protection (Set 04 Prime)
+
+**spark** — `/spark tps`, `/spark profiler`, `/spark health`. Essential for diagnosing lag on the 20-player server. Auto-downloaded by itzg via Modrinth (`spark:version_id`).
+
+**WorldGuard** — Region protection with flags. Requires WorldEdit as dependency. Both auto-downloaded via Modrinth (`worldedit:p8T2aZ8U,worldguard:EZl3moba`). Key commands: `/rg define <name>`, `/rg flag <name> pvp deny`.
 
 ## Cast.conf Persistence After Reboot
 
@@ -557,7 +565,26 @@ NEVER change LLM provider or model configurations without explicit user confirma
 
 Done: DC-1 through DC-8, DC-10 through DC-28, DC-68 through DC-76, DC-95 through DC-112, DC-118 through DC-122  
 Cancelled: DC-78 (Multiverse Pipeline), DC-80 (Lobby Matrix), DC-82 (Showroom), DC-83 (Relocatable blueprints) — discarded in favor of in-world design (2026-04-28)  
-Backlog: DC-77 (error frequency tracker), DC-79 (blueprint conversion), DC-81 (blueprint compiler), DC-84 (regeneration), DC-85 through DC-91 (in-world blueprint engine), DC-111 (spike: Hermes /voice mode), DC-123 (dashboard/TTS regression after DC-112)
+Backlog: DC-77 (error frequency tracker), DC-79 (blueprint conversion), DC-81 (blueprint compiler), DC-84 (regeneration), DC-85 through DC-91 (in-world blueprint engine), DC-111 (spike: Hermes /voice mode), DC-123 (dashboard/TTS regression after DC-112), DC-124 through DC-132 (Server Setup Overhaul epic — see plans/DC-124.md)
+
+### Epic: DC-124 — Server Setup Overhaul
+
+**Status: in_planning (2026-05-03)** — branch `overhaul/server-setup`, 5-PR strategy.
+Source: Claude Opus 4.7 architectural review, archived in vault at `projects/DaemonCraft/overhaul-plan.md`.
+Blocks on: DC-123.
+
+| Task | Phase | Notes |
+|------|-------|-------|
+| DC-125 | 0 — stabilize | image SHA pin, rolemaster.yaml model fix, plugin version inventory |
+| DC-126 | 1a — hardening | Docker limits, mc-backup sidecar, CoreProtect, LuckPerms |
+| DC-127 | 1b — server visual | SkinsRestorer + DecentHolograms + Better Leaves + Clean Glass + TAB |
+| DC-128 | 1c — Java client | `daemoncraft.mrpack` (Modrinth App, shaders opt-in) |
+| DC-129 | 1d — Bedrock client | `daemoncraft.mcpack` via Geyser/packs/ |
+| DC-130 | 2 — docs | SOUL-rolemaster stage-tools cheatsheet |
+| DC-131 | safety | whitelist + chat moderation |
+| DC-132 | observability | Plan plugin + agent metrics JSONL |
+
+Deferred per plan: multi-server mesh, Velocity proxy, Terraform, pre-built worlds.
 
 ### Epic: DC-105 — Unified Social Routing
 

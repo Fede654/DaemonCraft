@@ -28,6 +28,92 @@ if str(HERMES_DIR) not in sys.path:
 MC_API_URL = os.getenv("MC_API_URL", "http://localhost:3001")
 BOT_USERNAME = os.getenv("MC_USERNAME", "Steve").lower()
 
+# DC-132 metrics — append-only JSONL per cast per UTC day. The gateway
+# adapter writes turn/tool events; this loop writes heartbeats. Schema
+# is documented in scripts/agent-metrics-report.py.
+_METRICS_DIR_DEFAULT = Path.home() / ".hermes" / "metrics"
+METRICS_CAST = os.getenv("MC_METRICS_CAST", "")  # set by daemoncraft.py launcher
+METRICS_DIR = Path(os.getenv("MC_METRICS_DIR", str(_METRICS_DIR_DEFAULT)))
+
+
+def _emit_metric(kind: str, **fields) -> None:
+    """Append a JSON line to ~/.hermes/metrics/<cast>/<date>.jsonl. Best-effort.
+
+    Uses a single os.write() with O_APPEND so writes shorter than PIPE_BUF
+    (typically 4 KB on Linux) are POSIX-atomic — even with concurrent writers
+    or a process kill mid-write, you can't get a half-written line. The
+    report script tolerates truncated lines anyway, but this prevents them
+    in the first place.
+    """
+    if not METRICS_CAST:
+        return
+    try:
+        import datetime as _dt
+        now = _dt.datetime.utcnow()
+        cast_dir = METRICS_DIR / METRICS_CAST
+        cast_dir.mkdir(parents=True, exist_ok=True)
+        path = cast_dir / f"{now.date().isoformat()}.jsonl"
+        record = {
+            "ts": now.isoformat(timespec="seconds") + "Z",
+            "cast": METRICS_CAST,
+            "agent": BOT_USERNAME.capitalize(),
+            "kind": kind,
+            **fields,
+        }
+        line = (json.dumps(record, separators=(",", ":")) + "\n").encode("utf-8")
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, line)
+        finally:
+            os.close(fd)
+    except Exception:
+        # Metrics must never break the heartbeat loop.
+        pass
+
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════════════════
+# Human Design Integration (DC-144)
+# ═════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+def _init_hd_injector(agent_id: str):
+    """Initialize HD context injector. Returns (injector, chart_exists) or (None, False)."""
+    try:
+        from human_design import HDChartStorage, TransitEngine, HDContextInjector
+        storage = HDChartStorage(cast_name="rolemaster")
+        transits = TransitEngine()
+        injector = HDContextInjector(storage, transits)
+        # Verify chart exists
+        chart = storage.load(agent_id)
+        return injector, True
+    except Exception as e:
+        print(f"[loop] HD not available: {e}", flush=True)
+        return None, False
+
+
+def _generate_hd_context(injector, agent_id: str, is_first: bool) -> str:
+    """Generate HD context block for this turn."""
+    if injector is None:
+        return ""
+    try:
+        # Generate minimal context (summary on most turns)
+        from human_design import HDChartStorage, TransitEngine, HDContextInjector
+        # Re-create to avoid state issues
+        storage = HDChartStorage(cast_name="rolemaster")
+        transits = TransitEngine()
+        injector = HDContextInjector(storage, transits)
+        # Use a minimal SOUL prompt just to get the injection
+        minimal_soul = "[[hd-context]]\n"
+        injected = injector.inject(minimal_soul, agent_id, is_first_turn=is_first)
+        # Extract the content between markers
+        start = injected.find("[[hd-context]]")
+        end = injected.find("[[/hd-context]]")
+        if start != -1 and end != -1:
+            return injected[start + len("[[hd-context]]"):end].strip()
+        return ""
+    except Exception as e:
+        print(f"[loop] HD context generation failed: {e}", flush=True)
+        return ""
+
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════════════════
 # HTTP helpers
@@ -59,15 +145,18 @@ def _get_json(path: str) -> dict:
         return {}
 
 
-def send_heartbeat_context(status: dict, nearby: dict, inventory: dict, plan: dict, events: list) -> bool:
+def send_heartbeat_context(status: dict, nearby: dict, inventory: dict, plan: dict, events: list, hd_context: str = "") -> bool:
     """Send a perception snapshot to the gateway via the bot server."""
-    return _post_json("/heartbeat/context", {
+    payload = {
         "status": status,
         "nearby": nearby,
         "inventory": inventory,
         "plan": plan,
         "events": events,
-    })
+    }
+    if hd_context:
+        payload["hd_context"] = hd_context
+    return _post_json("/heartbeat/context", payload)
 
 
 def send_agent_heartbeat(next_turn_in: float | None = None, turn_in_progress: bool = False):
@@ -126,6 +215,10 @@ turn_in_progress = threading.Event()
 cancel_event = threading.Event()
 
 STANDBY_FILE = os.getenv("STANDBY_FILE", "")
+
+# DC-109: Feature flags for gateway/loop coordination
+GATEWAY_HANDLES_QUEST_EVENTS = os.getenv("GATEWAY_HANDLES_QUEST_EVENTS", "0") == "1"
+GATEWAY_HANDLES_CHAT = os.getenv("GATEWAY_HANDLES_CHAT", "0") == "1"
 
 
 def _is_standby() -> bool:
@@ -547,10 +640,20 @@ def run_agent_loop(profile_name: str, initial_prompt: str, interval: int = 30):
     print(f"[loop] Heartbeat injector started: {profile_name}")
     print(f"[loop] Interval: {interval}s")
     print(f"[loop] MC_API_URL: {MC_API_URL}")
+    print(f"[loop] Feature flags: QUEST_EVENTS={GATEWAY_HANDLES_QUEST_EVENTS}, CHAT={GATEWAY_HANDLES_CHAT}")
 
     start_ws_listener()
     start_quest_engine()
-    start_daemon_guardian()
+    if os.environ.get("DAEMON_GUARDIAN") == "1":
+        start_daemon_guardian()
+
+    # DC-144: Initialize Human Design
+    agent_id = BOT_USERNAME.lower()
+    hd_injector, hd_ready = _init_hd_injector(agent_id)
+    if hd_ready:
+        print(f"[loop] HD chart loaded for {agent_id}", flush=True)
+    else:
+        print(f"[loop] HD not active for {agent_id}", flush=True)
 
     turn_count = 0
 
@@ -582,10 +685,16 @@ def run_agent_loop(profile_name: str, initial_prompt: str, interval: int = 30):
                 if triggered:
                     events.append("Chat or quest activity detected")
 
+                # DC-144: Generate HD context (full natal on first turn, summary thereafter)
+                hd_context = _generate_hd_context(hd_injector, agent_id, is_first=(turn_count == 1))
+                if hd_context:
+                    print(f"[loop] HD context generated ({len(hd_context)} chars)", flush=True)
+
                 # Send heartbeat context to gateway
-                ok = send_heartbeat_context(status, nearby, inventory, plan, events)
+                ok = send_heartbeat_context(status, nearby, inventory, plan, events, hd_context)
                 if ok:
-                    print(f"[loop] Heartbeat sent (status={bool(status)}, nearby={bool(nearby)}, plan={bool(plan)})", flush=True)
+                    print(f"[loop] Heartbeat sent (status={bool(status)}, nearby={bool(nearby)}, plan={bool(plan)}, hd={bool(hd_context)})", flush=True)
+                    _emit_metric("heartbeat", triggered=bool(triggered), hd_active=bool(hd_context))
                 else:
                     print("[loop] Heartbeat send failed", flush=True)
 

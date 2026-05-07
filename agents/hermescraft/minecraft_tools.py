@@ -892,10 +892,30 @@ MC_MANAGE_SCHEMA = {
 # ═══════════════════════════════════════════════════════════════════
 
 def _handle_mc_plan(args: dict, **kwargs) -> str:
-    """Manage persistent goals and tasks. Bots use this to remember multi-step projects across turns."""
+    """Manage persistent goals and tasks. Bots use this to remember multi-step projects across turns.
+    
+    DC-109: All mutating actions include expected_epoch for optimistic concurrency.
+    On 409 STALE_PLAN, refetches current plan and retries once."""
     action = args.get("action", "get_plan")
-    payload: Dict[str, Any] = {}
-
+    
+    # Helper: fetch current plan epoch
+    def _get_current_epoch() -> int:
+        try:
+            resp = _api_post("/action/plan", {"action": "get_plan"})
+            return resp.get("epoch", 0)
+        except Exception:
+            return 0
+    
+    # Helper: execute plan action with optional epoch retry
+    def _do_plan_post(payload: dict) -> str:
+        resp = _api_post("/action/plan", payload)
+        # Handle 409 STALE_PLAN — refetch epoch and retry once
+        if isinstance(resp, dict) and not resp.get("ok") and "STALE_PLAN" in resp.get("error", ""):
+            current_epoch = _get_current_epoch()
+            payload["expected_epoch"] = current_epoch
+            resp = _api_post("/action/plan", payload)
+        return _fmt(resp)
+    
     if action == "set_goal":
         if "goal" not in args:
             return "Error: goal is required for set_goal"
@@ -903,8 +923,9 @@ def _handle_mc_plan(args: dict, **kwargs) -> str:
             "action": "set_goal",
             "goal": args["goal"],
             "tasks": args.get("tasks", []),
+            "expected_epoch": args.get("expected_epoch", _get_current_epoch()),
         }
-        return _fmt(_api_post("/action/plan", payload))
+        return _do_plan_post(payload)
 
     if action == "get_plan":
         return _fmt(_api_post("/action/plan", {"action": "get_plan"}))
@@ -918,8 +939,9 @@ def _handle_mc_plan(args: dict, **kwargs) -> str:
             "status": args.get("status"),
             "result": args.get("result"),
             "attempt": args.get("attempt"),
+            "expected_epoch": args.get("expected_epoch", _get_current_epoch()),
         }
-        return _fmt(_api_post("/action/plan", payload))
+        return _do_plan_post(payload)
 
     if action == "add_task":
         if "goal" not in args:
@@ -928,8 +950,9 @@ def _handle_mc_plan(args: dict, **kwargs) -> str:
             "action": "add_task",
             "goal": args["goal"],
             "status": args.get("status", "pending"),
+            "expected_epoch": args.get("expected_epoch", _get_current_epoch()),
         }
-        return _fmt(_api_post("/action/plan", payload))
+        return _do_plan_post(payload)
 
     if action == "remove_task":
         if "task_id" not in args:
@@ -937,18 +960,23 @@ def _handle_mc_plan(args: dict, **kwargs) -> str:
         payload = {
             "action": "remove_task",
             "task_id": args["task_id"],
+            "expected_epoch": args.get("expected_epoch", _get_current_epoch()),
         }
-        return _fmt(_api_post("/action/plan", payload))
+        return _do_plan_post(payload)
 
     if action == "clear_goal":
-        return _fmt(_api_post("/action/plan", {"action": "clear_goal"}))
+        payload = {
+            "action": "clear_goal",
+            "expected_epoch": args.get("expected_epoch", _get_current_epoch()),
+        }
+        return _do_plan_post(payload)
 
     return f"Error: unknown plan action '{action}'"
 
 
 MC_PLAN_SCHEMA = {
     "name": "mc_plan",
-    "description": "Persistent goal and task management. Use this to plan multi-step projects that survive across turns. 'set_goal' creates a goal with tasks. 'get_plan' reads current progress. 'update_task' marks tasks done/in_progress/blocked. 'add_task' appends a task. 'remove_task' deletes one. 'clear_goal' resets everything.",
+    "description": "Persistent goal and task management. Use this to plan multi-step projects that survive across turns. 'set_goal' creates a goal with tasks. 'get_plan' reads current progress. 'update_task' marks tasks done/in_progress/blocked. 'add_task' appends a task. 'remove_task' deletes one. 'clear_goal' resets everything. Mutating actions send expected_epoch automatically; only pass it if you just read the plan and know the current epoch.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -974,6 +1002,7 @@ MC_PLAN_SCHEMA = {
             "status": {"type": "string", "enum": ["pending", "in_progress", "done", "blocked"], "description": "New status for update_task"},
             "result": {"type": "string", "description": "Optional result note for update_task"},
             "attempt": {"type": "boolean", "description": "If true, increments attempt counter for update_task"},
+            "expected_epoch": {"type": "number", "description": "Current plan epoch (for optimistic concurrency). Auto-fetched if omitted."},
         },
         "required": ["action"],
     },
