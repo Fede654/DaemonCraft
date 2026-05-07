@@ -216,6 +216,10 @@ cancel_event = threading.Event()
 
 STANDBY_FILE = os.getenv("STANDBY_FILE", "")
 
+# DC-109: Feature flags for gateway/loop coordination
+GATEWAY_HANDLES_QUEST_EVENTS = os.getenv("GATEWAY_HANDLES_QUEST_EVENTS", "0") == "1"
+GATEWAY_HANDLES_CHAT = os.getenv("GATEWAY_HANDLES_CHAT", "0") == "1"
+
 
 def _is_standby() -> bool:
     if not STANDBY_FILE:
@@ -636,6 +640,7 @@ def run_agent_loop(profile_name: str, initial_prompt: str, interval: int = 30):
     print(f"[loop] Heartbeat injector started: {profile_name}")
     print(f"[loop] Interval: {interval}s")
     print(f"[loop] MC_API_URL: {MC_API_URL}")
+    print(f"[loop] Feature flags: QUEST_EVENTS={GATEWAY_HANDLES_QUEST_EVENTS}, CHAT={GATEWAY_HANDLES_CHAT}")
 
     start_ws_listener()
     start_quest_engine()

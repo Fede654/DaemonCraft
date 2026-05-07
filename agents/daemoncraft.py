@@ -433,6 +433,9 @@ def start_agent(
         "HERMES_SESSION_PLATFORM": "telegram",
         # DC-132 — activates the JSONL metrics emitter in agent_loop.py.
         "MC_METRICS_CAST": cast_name,
+        # DC-109 — feature flags for gateway/loop coordination (default off)
+        "GATEWAY_HANDLES_QUEST_EVENTS": os.getenv("GATEWAY_HANDLES_QUEST_EVENTS", "0"),
+        "GATEWAY_HANDLES_CHAT": os.getenv("GATEWAY_HANDLES_CHAT", "0"),
     }
     if max_chat_chars:
         env["MC_MAX_CHAT_CHARS"] = str(max_chat_chars)
