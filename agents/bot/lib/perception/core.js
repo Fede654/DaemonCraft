@@ -110,6 +110,10 @@ export function raycastFirstSolid(origin, direction, env, maxDistance = 16, step
     };
     const block = env.blockAt({ x: Math.floor(sample.x), y: Math.floor(sample.y), z: Math.floor(sample.z) });
     if (block && block.boundingBox === 'block' && block.name !== 'air' && block.name !== 'cave_air') {
+      // Ensure position is present (test-fake adapters may omit it)
+      if (!block.position) {
+        block.position = { x: Math.floor(sample.x), y: Math.floor(sample.y), z: Math.floor(sample.z) };
+      }
       return { block, distance };
     }
   }

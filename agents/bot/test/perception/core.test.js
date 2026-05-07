@@ -141,7 +141,7 @@ test('scanVisibleBlocks finds a wall straight ahead', () => {
   const env = {
     blockAt: ({ x, y, z }) => {
       if (y < 0) return { name: 'bedrock', boundingBox: 'block' };
-      if (z === 5) return { name: 'stone', boundingBox: 'block' };
+      if (z === -5) return { name: 'stone', boundingBox: 'block' };
       return { name: 'air', boundingBox: 'empty' };
     },
   };

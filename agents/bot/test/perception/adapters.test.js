@@ -16,12 +16,12 @@ function buildSimpleGrid() {
   // A tree
   adapter.setBlock(2, 64, 3, 'oak_log');
   adapter.setBlock(2, 65, 3, 'oak_log');
-  // Lava hazard
-  adapter.setBlock(-2, 64, 4, 'lava');
+  // Lava hazard at eye level
+  adapter.setBlock(-2, 65, 4, 'lava');
   return adapter;
 }
 
-const SHARED_OBSERVER = { x: 0, y: 64, z: 0, yaw: 0, pitch: 0, height: 1.62 };
+const SHARED_OBSERVER = { x: 0, y: 64, z: 0, yaw: Math.PI, pitch: 0, height: 1.62 };
 
 // ═══════════════════════════════════════════════════════════════════
 // Fake adapter tests
