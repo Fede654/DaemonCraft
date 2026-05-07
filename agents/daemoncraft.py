@@ -483,6 +483,9 @@ def start_agent(
         # DC-134 — cap iterations and turn wall-clock time for responsiveness
         "HERMES_MAX_ITERATIONS": "6",
         "HERMES_TURN_TIMEOUT_SECONDS": "45",
+        # DC-109 — feature flags for gateway/loop coordination (default off)
+        "GATEWAY_HANDLES_QUEST_EVENTS": os.getenv("GATEWAY_HANDLES_QUEST_EVENTS", "0"),
+        "GATEWAY_HANDLES_CHAT": os.getenv("GATEWAY_HANDLES_CHAT", "0"),
     }
     if max_chat_chars:
         env["MC_MAX_CHAT_CHARS"] = str(max_chat_chars)
