@@ -1,0 +1,76 @@
+# Hermes Skin Assignment Map
+# Maps agent names (as declared in cast YAMLs) to skin sources.
+#
+# Supported source types:
+#   mojang:<username>   — Fetch skin texture from Mojang by premium username.
+#   url:<image-url>     — Upload a skin image URL via MineSkin (requires internet).
+#   local:<.playerskin> — Copy an existing SkinsRestorer .playerskin file.
+#   default             — Use SkinsRestorer default skin handling (no override).
+#
+# The script writes <offline-uuid>.playerskin into:
+#   server/data/plugins/SkinsRestorer/skins/
+#
+# Run:
+#   python scripts/assign-skins.py
+#   python scripts/assign-skins.py --dry-run
+#   python scripts/assign-skins.py --skin-config config/hermes-skins.yaml
+
+# ── Rolemaster ────────────────────────────────────────────────────────────────────────────
+Pamplinas:
+  source: mojang:Notch
+  notes: Classic creator skin for the Holodeck Director.
+
+# ── Companion ─────────────────────────────────────────────────────────────────────────────
+Steve:
+  source: default
+  notes: Keep the classic Steve skin.
+
+# ── Landfolk ─────────────────────────────────────────────────────────────────────────────
+Stevie:
+  source: default
+  notes: Classic Steve variant.
+
+Moss:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Reed:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Flint:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Ember:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+# ── Civilization ───────────────────────────────────────────────────────────────────────────
+Marcus:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Sarah:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Jin:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Dave:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Lisa:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Tommy:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
+
+Elena:
+  source: default
+  notes: Default skin — assign manually or via URL if desired.
