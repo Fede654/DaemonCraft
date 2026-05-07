@@ -78,6 +78,7 @@ import {
   summarizeVisibleBlocks,
   summarizeSceneText,
 } from './lib/perception.js';
+import { createMinecraftPerceptionAdapter } from './lib/perception/index.js';
 import {
   inventoryHint,
   itemCounts,
@@ -280,6 +281,7 @@ let lastHealth = 20;
 let reconnectAttempts = 0;
 let reconnectTimeout = null; // Track active reconnect timer to cancel stale ones
 let isConnecting = false; // Guard against concurrent createBot() calls
+let perceptionAdapter = null; // Perception primitive adapter (DC-DEP-4)
 const MAX_LOG = 100;
 const MAX_QUEUE = 20;
 
@@ -681,6 +683,7 @@ async function createBotImpl() {
       bot.once('end', async (reason) => {
         log(`Disconnected: ${reason}`);
         botReady = false;
+        perceptionAdapter = null;
         photoScanReady = false;
         photoScanPromise = null;
         photoCamera = null;
@@ -725,6 +728,24 @@ async function createBotImpl() {
 
       botReady = true;
       reconnectAttempts = 0;
+      // Initialize perception primitive adapter (DC-DEP-4)
+      try {
+        perceptionAdapter = createMinecraftPerceptionAdapter(bot, {
+          rules: {
+            fairPlay: fairPlayMode,
+            losEntityRange: FAIR_PLAY.LOS_ENTITY_RANGE,
+            sneakDetectRange: FAIR_PLAY.SNEAK_DETECT_RANGE,
+            soundMineRadius: FAIR_PLAY.SOUND_MINE_RADIUS,
+            soundSprintRadius: FAIR_PLAY.SOUND_SPRINT_RADIUS,
+            soundWalkRadius: FAIR_PLAY.SOUND_WALK_RADIUS,
+            soundSneakRadius: FAIR_PLAY.SOUND_SNEAK_RADIUS,
+            blockScanRange: FAIR_PLAY.BLOCK_SCAN_RANGE,
+          },
+        });
+        log('[Perception] Adapter initialized');
+      } catch (err) {
+        log(`[Perception] Adapter init failed: ${err.message}`);
+      }
       const locs = loadLocations(); if(!locs.spawn){locs.spawn={...posObj(),saved:new Date().toISOString()};saveLocations(locs);}
       log(`Connected! Spawned at ${fmt(bot.entity.position.x)}, ${fmt(bot.entity.position.y)}, ${fmt(bot.entity.position.z)}`);
 
@@ -1039,40 +1060,19 @@ function detectHazardsFromVisibleBlocks(blocks) {
 }
 
 function buildSceneSummary({ range = 16 } = {}) {
-  const b = ensureBot();
-  const visibleBlocks = fairPlayMode ? scanVisibleBlocks({ range }) : scanVisibleBlocks({ range: Math.min(range, 24), horizontalFov: 140, verticalFov: 50, horizontalRays: 9, verticalRays: 4 });
-  const pos = b.entity.position;
-  const visibleEntities = filterEntitiesFairPlay(Object.values(b.entities)
-    .filter((entity) => entity !== b.entity && entity.position.distanceTo(pos) <= Math.min(range + 8, 24)))
-    .sort((a, c) => a.position.distanceTo(pos) - c.position.distanceTo(pos))
-    .slice(0, 8)
-    .map((entity) => ({
-      type: entity.username || entity.name || entity.displayName || 'unknown',
-      distance: fmt(entity.position.distanceTo(pos)),
-      bearing: bearingFromDelta(entity.position.x - pos.x, entity.position.z - pos.z),
-      kind: entity.type || (entity.username ? 'player' : 'mob'),
-      health: entity.health ?? undefined,
-    }));
-  const lookingAt = b.blockAtCursor?.(5);
-  const hazards = detectHazardsFromVisibleBlocks(visibleBlocks);
-  const summary = summarizeSceneText({
-    lookingAt: lookingAt ? { name: lookingAt.name, position: posObj(lookingAt.position) } : null,
-    visibleBlocks,
-    visibleEntities,
-    hazards,
-    sounds: soundEvents.slice(-5),
-    memoryHints: getMemoryHints(),
-  });
-
+  if (perceptionAdapter && bot && botReady) {
+    return perceptionAdapter.buildScene({ range: Math.min(range, 24) });
+  }
+  // Fallback when bot not ready
   return {
-    summary,
-    visible_blocks: summarizeVisibleBlocks(visibleBlocks),
-    visible_block_hits: visibleBlocks,
-    visible_entities: visibleEntities,
-    hazards,
-    looking_at: lookingAt ? { name: lookingAt.name, position: posObj(lookingAt.position) } : null,
-    sounds: soundEvents.slice(-5),
-    memory_hints: getMemoryHints(),
+    summary: 'Bot not ready.',
+    visible_blocks: [],
+    visible_block_hits: [],
+    visible_entities: [],
+    hazards: [],
+    looking_at: null,
+    sounds: [],
+    memory_hints: [],
     fair_play: fairPlayMode,
     range,
   };
@@ -3305,6 +3305,9 @@ async collect({ block, count = 1 }) {
 
   async set_fair_play({ enabled }) {
     fairPlayMode = !!enabled;
+    if (perceptionAdapter) {
+      perceptionAdapter.setRules({ fairPlay: fairPlayMode });
+    }
     return { result: `Fair play mode: ${fairPlayMode ? 'ON (LOS, sound, reaction delay)' : 'OFF (god-mode perception)'}` };
   },
 };
@@ -3722,16 +3725,20 @@ const httpServer = http.createServer(async (req, res) => {
       }
 
       // Heartbeat context — POST /heartbeat/context
-      // Receives world-state/perception snapshot from agent_loop and broadcasts
+      // Produces a PerceptionSnapshot via the perception primitive and broadcasts
       // it as a WebSocket heartbeat_context event to all connected clients
-      // (gateway adapter + dashboard).
+      // (gateway adapter + dashboard). Non-perception fields (status, plan,
+      // events, inventory) are still forwarded from the agent_loop payload.
       if (path === '/heartbeat/context') {
         const ctx = body || {};
+        const snapshot = (perceptionAdapter && bot && botReady)
+          ? perceptionAdapter.buildScene({ range: fairPlayMode ? FAIR_PLAY.BLOCK_SCAN_RANGE : 16 })
+          : null;
         const payload = {
           timestamp: Date.now(),
           bot_username: config.mc.username,
+          ...(snapshot || {}),
           status: ctx.status || null,
-          nearby: ctx.nearby || null,
           inventory: ctx.inventory || null,
           plan: ctx.plan || null,
           events: ctx.events || [],
