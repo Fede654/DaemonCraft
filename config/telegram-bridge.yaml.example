@@ -1,0 +1,41 @@
+# DaemonCraft Telegram <-> Minecraft Chat Bridge Configuration
+#
+# 1. Copy this file to config/telegram-bridge.yaml
+# 2. Fill in your Telegram bot token and chat ID
+# 3. Run: python3 scripts/telegram-bridge.py
+#
+# Get a bot token from @BotFather on Telegram.
+# Get your chat ID by messaging the bot, then visiting:
+#   https://api.telegram.org/bot<TOKEN>/getUpdates
+
+telegram:
+  bot_token: "123456789:ABCdefGHIjklMNOpqrSTUvwxyz"
+  chat_id: "-1001234567890"
+  # api_base: "https://api.telegram.org"  # optional proxy endpoint
+
+minecraft:
+  api_url: "http://localhost:3001"
+  bot_username: "HermesBot"
+  poll_interval: 2.0
+
+bridge:
+  # Format strings use Python str.format():
+  #   {sender} = username, {message} = text, {world} = MC dimension
+  mc_to_tg_format: "[{world}] <{sender}> {message}"
+  tg_to_mc_format: "[TG] {sender}: {message}"
+
+  # Comma-separated lists of usernames to ignore (case-insensitive)
+  ignore_mc_users: "HermesBot"
+  ignore_tg_users: ""
+
+  # Drop messages from Telegram bots (including this bridge's own bot)
+  ignore_tg_bots: true
+
+  # If non-empty, only forward messages that start with this prefix
+  require_prefix: ""
+
+  # Max characters per forwarded message (MC hard-limit ~256, TG ~4096)
+  max_length: 1000
+
+  # Size of the in-memory deduplication window for MC messages
+  dedup_window: 200

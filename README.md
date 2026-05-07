@@ -11,6 +11,7 @@ DaemonCraft is a scalable ecosystem where persistent AI companions live inside a
 - `server/` — Minecraft Forge server configuration and data
 - `bots/` — Mineflayer-based Daemon AI agents (Node.js)
 - `agent-bridge/` — Python trigger bridge for agent orchestration
+- `scripts/telegram-bridge.py` — Standalone Telegram <-> Minecraft chat bridge (see `docs/telegram-bridge.md`)
 - `docker/` — Docker configurations and overrides
 - `docs/` — Architecture docs, runbooks, and design records
   - [`docs/privacy.md`](docs/privacy.md) — what we log, retention, and parent-deletion runbook

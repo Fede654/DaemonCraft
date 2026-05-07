@@ -1,0 +1,16 @@
+[Unit]
+Description=DaemonCraft Telegram <-> Minecraft Chat Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=fede
+Group=fede
+WorkingDirectory=/home/fede/REPOS/daemoncraft
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/fede/REPOS/daemoncraft/scripts/telegram-bridge.py --config /home/fede/REPOS/daemoncraft/config/telegram-bridge.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
