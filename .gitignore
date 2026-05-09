@@ -70,9 +70,18 @@ EPIC-*.md
 # manually tracked copy if someone adds it directly)
 server/plugins/luckperms/*.db
 server/plugins/luckperms/luckperms-h2*
-
 # Built client pack artifacts
 dist/
+
+# Geyser generated files (DC-126/DC-128 Bedrock support)
+server/geyser/dumps/
+server/geyser/packs/
+server/geyser/key.pem
+server/geyser/public-key.pem
+server/geyser/saved-refresh-tokens.json
+
+# Local environment overrides
+.env
 
 # Generated bot config JSON (from YAML at runtime)
 agents/bot/config-*.json

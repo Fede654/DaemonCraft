@@ -325,6 +325,12 @@ The active Hermes install at `~/.hermes/hermes-agent` is **NEVER** to be directl
 
 **WorldGuard** — Region protection with flags. Requires WorldEdit as dependency. Both auto-downloaded via Modrinth (`worldedit:p8T2aZ8U,worldguard:EZl3moba`). Key commands: `/rg define <name>`, `/rg flag <name> pvp deny`.
 
+### Observability & Protection (Set 04 Prime)
+
+**spark** — `/spark tps`, `/spark profiler`, `/spark health`. Essential for diagnosing lag on the 20-player server. Auto-downloaded by itzg via Modrinth (`spark:version_id`).
+
+**WorldGuard** — Region protection with flags. Requires WorldEdit as dependency. Both auto-downloaded via Modrinth (`worldedit:p8T2aZ8U,worldguard:EZl3moba`). Key commands: `/rg define <name>`, `/rg flag <name> pvp deny`.
+
 ## Cast.conf Persistence After Reboot
 
 After a system restart, `daemoncraft-cast.service` auto-starts using whatever `CAST=` value is in `~/.config/daemoncraft/cast.conf`. **This is the only source of truth for which cast launches on boot.**
