@@ -1,0 +1,72 @@
+# DaemonCraft companion via the Mindcraft sidecar body
+# (Phase-5 reference cast — exercises body=mindcraft against the
+# altermundi/sidecar-phase1 branch of kolbytn/mindcraft.)
+#
+# Prerequisites:
+# 1. Mindcraft running locally with enable_sidecar=true and the
+#    andy-altercraft profile (see ~/REPOS/mindcraft/profiles/andy-altercraft.json).
+#    The sidecar exposes :8090 by default; the bot in altercraft
+#    connects under the username defined in the mindcraft profile (here `andy`).
+# 2. The Hermes profile (`mindcraft-andy`) installed at
+#    ~/.hermes/profiles/mindcraft-andy/ with a flat-schema config.yaml
+#    (no `profile:` wrapper — agent_loop reads model/toolsets at the root).
+# 3. anyVPN active (the body's HTTP and WS go to localhost; the bot inside
+#    Mindcraft connects to altercraft @ 10.10.20.1:25565 via the VPN).
+#
+# Behaviour:
+# - DaemonCraft does NOT spawn a local bot/server.js for this cast.
+#   The body is external (Mindcraft sidecar), already running on :8090.
+# - The agent process runs unchanged — agent_loop.py uses
+#   `body=mindcraft` adapter and talks HTTP/WS to the sidecar.
+# - Andy (Andy-4.2) keeps its autonomous tactical loop inside Mindcraft.
+#   Hermes (the strategic layer) is THIS agent process.
+# - Set `route_chat_to_sidecar_only=true` in mindcraft/settings.js if you
+#   want Hermes to be the sole consumer of player chat (no Andy
+#   double-speak).
+
+name: companion-mindcraft
+description: One Hermes companion driving an external Mindcraft sidecar body (Phase-5 reference)
+mode: companion
+soul_file: SOUL-minecraft.md
+
+# Cast-level default body. Per-agent override via the `body:` field below.
+body: mindcraft
+
+# Phase-7 cast-level guardrails. Per-agent overrides under `guardrails:`
+# inside the agent block. The fields here:
+#   max_chat_chars  — chat lines longer than this are dropped with a
+#                     loud log (the model must learn shorter SAY: lines).
+#                     Same as the legacy top-level max_chat_chars but
+#                     promoted into the guardrails block.
+#   cycle_detect    — Phase-8 tool-call cycle breaker.
+#     n             — minimum identical sigs in window to trigger
+#     window        — sliding window of recent calls
+#     action        — log | pause | chat
+guardrails:
+  max_chat_chars: 240
+  cycle_detect:
+    n: 4
+    window: 6
+    action: log
+
+agents:
+  - name: andy
+    template: landfolk/steve
+    # `port` is unused when `body=mindcraft` (no local bot to spawn) but
+    # required by the cast schema. The sidecar URL comes from `api_url`.
+    port: 0
+    # Use the Hermes mindcraft-andy profile; flat-schema config.yaml.
+    # Profile lives at ~/.hermes/profiles/mindcraft-andy/.
+    template_profile: mindcraft-andy
+    # Phase-4 sidecar default port is 8090 + count_id. Single-bot run
+    # uses 8090 verbatim.
+    api_url: http://localhost:8090
+    body: mindcraft
+    # The strategic model is whatever the Hermes profile config.yaml
+    # declares (mindcraft-andy = kimi-k2.6 via kimi-coding).
+    chat_format: say_lines
+    # Per-agent guardrail overrides go here, e.g.
+    # guardrails:
+    #   cycle_detect:
+    #     n: 3
+    #     action: pause
