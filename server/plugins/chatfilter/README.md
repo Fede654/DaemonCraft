@@ -23,26 +23,37 @@ server is a no-op.
 If you'd rather do it by hand, the script is short and the manual paths
 below are equivalent.
 
-**A) One-time copy** — append the `ChatFilter:` children to the plugin's
-existing file:
+**A) Append** — add the `ChatFilter:` children to the plugin's existing file,
+then **restart the server** (see gotcha below):
 
 ```bash
 docker cp server/plugins/chatfilter/wordFilters-es.yml \
   daemoncraft-minecraft:/data/plugins/ChatFilter/wordFilters-es.yml.staging
-docker exec -u 1000 daemoncraft-minecraft sh -c \
-  'grep -A 999 "^ChatFilter:" /data/plugins/ChatFilter/wordFilters-es.yml.staging \
-   | tail -n +2 >> /data/plugins/ChatFilter/wordFilters.yml'
-docker exec -u 1000 daemoncraft-minecraft mc-send-to-console "chatfilter reload"
+docker exec -u 1000 daemoncraft-minecraft python3 -c "
+src = open('/data/plugins/ChatFilter/wordFilters-es.yml.staging').read()
+body = src.split('ChatFilter:\n', 1)[1]   # strip the leading header
+with open('/data/plugins/ChatFilter/wordFilters.yml', 'a') as f:
+    f.write('\n' + body)
+"
+docker exec -u 1000 daemoncraft-minecraft rm /data/plugins/ChatFilter/wordFilters-es.yml.staging
+docker compose restart minecraft
 ```
 
-**B) Replace** — if you're starting from the default file and don't need
-the EN samples:
+**B) Replace** — starting fresh, no EN samples needed:
 
 ```bash
 cp server/plugins/chatfilter/wordFilters-es.yml \
   server/data/plugins/ChatFilter/wordFilters.yml
-docker exec -u 1000 daemoncraft-minecraft mc-send-to-console "chatfilter reload"
+docker compose restart minecraft
 ```
+
+**Gotcha:** `chatfilter reload` reloads `config.yml` and the locale
+properties, but **NOT** `wordFilters.yml` — the filter set is built once
+at plugin enable. A full server restart is required to pick up new entries.
+Verified against ChatFilter 2.0.15 (zepsizola): `chatfilter reload` says
+"Config reloaded!" but the new entries don't fire; after `docker compose
+restart minecraft` the boot log shows the bumped filter count and the
+entries fire on the next chat message.
 
 `server/data/` is gitignored, so the live file isn't tracked here. This
 directory holds the canonical authored source.
