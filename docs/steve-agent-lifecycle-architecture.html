@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steve Agent Lifecycle Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { margin-bottom: 1.5rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1100px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card-dot.orange { background: #fb923c; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Steve Agent Lifecycle Architecture</h1>
+      </div>
+      <p class="subtitle">DaemonCraft Companion Mode — Bot → Heartbeat → Gateway → LLM → Action → World</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1200 820">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ============================================================
+             WORLD LAYER (top)
+             ============================================================ -->
+        <rect x="20" y="20" width="1160" height="140" rx="12" fill="rgba(251, 191, 36, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="36" y="40" fill="#fbbf24" font-size="11" font-weight="600">MINECRAFT WORLD</text>
+
+        <!-- User -->
+        <rect x="60" y="60" width="110" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="115" y="85" fill="white" font-size="11" font-weight="600" text-anchor="middle">Human Player</text>
+        <text x="115" y="100" fill="#94a3b8" font-size="8" text-anchor="middle">Chat commands</text>
+        <text x="115" y="115" fill="#94a3b8" font-size="8" text-anchor="middle">Siqui / Nico</text>
+
+        <!-- Minecraft Server -->
+        <rect x="280" y="60" width="130" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="345" y="85" fill="white" font-size="11" font-weight="600" text-anchor="middle">Minecraft Server</text>
+        <text x="345" y="100" fill="#94a3b8" font-size="8" text-anchor="middle">Paper 1.21.4</text>
+        <text x="345" y="115" fill="#fbbf24" font-size="8" text-anchor="middle">Peaceful / Online</text>
+
+        <!-- Other Bots -->
+        <rect x="500" y="60" width="110" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="555" y="85" fill="white" font-size="11" font-weight="600" text-anchor="middle">Other Agents</text>
+        <text x="555" y="100" fill="#94a3b8" font-size="8" text-anchor="middle">Pamplinas</text>
+        <text x="555" y="115" fill="#94a3b8" font-size="8" text-anchor="middle">Eko (Saira)</text>
+
+        <!-- Dashboard -->
+        <rect x="960" y="60" width="110" height="70" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="1015" y="85" fill="white" font-size="11" font-weight="600" text-anchor="middle">Dashboard</text>
+        <text x="1015" y="100" fill="#94a3b8" font-size="8" text-anchor="middle">localhost:3001</text>
+        <text x="1015" y="115" fill="#22d3ee" font-size="8" text-anchor="middle">WebSocket + TTS</text>
+
+        <!-- ============================================================
+             BOT LAYER
+             ============================================================ -->
+        <rect x="20" y="190" width="380" height="200" rx="12" fill="rgba(6, 78, 59, 0.05)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="36" y="210" fill="#34d399" font-size="11" font-weight="600">STEVE BOT (Mineflayer)</text>
+
+        <rect x="50" y="230" width="140" height="130" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="120" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">Bot Core</text>
+        <text x="120" y="270" fill="#94a3b8" font-size="8" text-anchor="middle">server.js</text>
+        <text x="120" y="285" fill="#94a3b8" font-size="8" text-anchor="middle">Pathfinder</text>
+        <text x="120" y="300" fill="#94a3b8" font-size="8" text-anchor="middle">placeBlock / dig</text>
+        <text x="120" y="315" fill="#94a3b8" font-size="8" text-anchor="middle">Stuck detection</text>
+        <text x="120" y="330" fill="#94a3b8" font-size="8" text-anchor="middle">WebSocket broadcast</text>
+        <text x="120" y="348" fill="#34d399" font-size="7" text-anchor="middle">PID: node server.js</text>
+
+        <!-- Bot HTTP API -->
+        <rect x="230" y="250" width="140" height="90" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="300" y="275" fill="white" font-size="10" font-weight="600" text-anchor="middle">HTTP API</text>
+        <text x="300" y="292" fill="#94a3b8" font-size="8" text-anchor="middle">POST /build/place</text>
+        <text x="300" y="305" fill="#94a3b8" font-size="8" text-anchor="middle">POST /move/goto</text>
+        <text x="300" y="318" fill="#94a3b8" font-size="8" text-anchor="middle">GET /status</text>
+        <text x="300" y="331" fill="#94a3b8" font-size="8" text-anchor="middle">POST /task/cancel</text>
+
+        <!-- ============================================================
+             AGENT LOOP LAYER
+             ============================================================ -->
+        <rect x="430" y="190" width="340" height="200" rx="12" fill="rgba(6, 78, 59, 0.05)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="446" y="210" fill="#34d399" font-size="11" font-weight="600">AGENT LOOP (agent_loop.py)</text>
+
+        <rect x="460" y="230" width="140" height="130" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="530" y="252" fill="white" font-size="10" font-weight="600" text-anchor="middle">WebSocket</text>
+        <text x="530" y="270" fill="#94a3b8" font-size="8" text-anchor="middle">Listener</text>
+        <text x="530" y="285" fill="#94a3b8" font-size="8" text-anchor="middle">Chat events</text>
+        <text x="530" y="300" fill="#94a3b8" font-size="8" text-anchor="middle">Interrupt flag</text>
+        <text x="530" y="315" fill="#94a3b8" font-size="8" text-anchor="middle">Self-echo filter</text>
+        <text x="530" y="330" fill="#94a3b8" font-size="8" text-anchor="middle">Idle auto-relay OFF</text>
+
+        <rect x="640" y="230" width="110" height="130" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="695" y="252" fill="white" font-size="10" font-weight="600" text-anchor="middle">Heartbeat</text>
+        <text x="695" y="270" fill="#94a3b8" font-size="8" text-anchor="middle">Injector</text>
+        <text x="695" y="288" fill="#94a3b8" font-size="8" text-anchor="middle">Every 60s</text>
+        <text x="695" y="303" fill="#94a3b8" font-size="8" text-anchor="middle">/status → context</text>
+        <text x="695" y="318" fill="#94a3b8" font-size="8" text-anchor="middle">/nearby → context</text>
+        <text x="695" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">/plan → context</text>
+        <text x="695" y="348" fill="#34d399" font-size="7" text-anchor="middle">Interval: 60s</text>
+
+        <!-- ============================================================
+             GATEWAY LAYER
+             ============================================================ -->
+        <rect x="810" y="190" width="370" height="200" rx="12" fill="rgba(136, 19, 55, 0.05)" stroke="#fb7185" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="826" y="210" fill="#fb7185" font-size="11" font-weight="600">HERMES GATEWAY (daemoncraft.py)</text>
+
+        <rect x="840" y="230" width="150" height="130" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="915" y="252" fill="white" font-size="10" font-weight="600" text-anchor="middle">Event Classifier</text>
+        <text x="915" y="270" fill="#94a3b8" font-size="8" text-anchor="middle">Heartbeat → context</text>
+        <text x="915" y="285" fill="#94a3b8" font-size="8" text-anchor="middle">Health drop → wake_up</text>
+        <text x="915" y="300" fill="#94a3b8" font-size="8" text-anchor="middle">Hostile mob → wake_up</text>
+        <text x="915" y="315" fill="#94a3b8" font-size="8" text-anchor="middle">Stuck → wake_up</text>
+        <text x="915" y="330" fill="#94a3b8" font-size="8" text-anchor="middle">Chat → message</text>
+        <text x="915" y="348" fill="#fb7185" font-size="7" text-anchor="middle">busy_input_mode: steer</text>
+
+        <rect x="1020" y="230" width="130" height="130" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="1085" y="252" fill="white" font-size="10" font-weight="600" text-anchor="middle">Session</text>
+        <text x="1085" y="270" fill="#94a3b8" font-size="8" text-anchor="middle">Store</text>
+        <text x="1085" y="288" fill="#94a3b8" font-size="8" text-anchor="middle">Injects steer</text>
+        <text x="1085" y="303" fill="#94a3b8" font-size="8" text-anchor="middle">Injects chat</text>
+        <text x="1085" y="318" fill="#94a3b8" font-size="8" text-anchor="middle">TTS relay</text>
+        <text x="1085" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">Dashboard notify</text>
+
+        <!-- ============================================================
+             LLM LAYER (bottom)
+             ============================================================ -->
+        <rect x="20" y="430" width="1160" height="220" rx="12" fill="rgba(76, 29, 149, 0.05)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="36" y="450" fill="#a78bfa" font-size="11" font-weight="600">LLM (kimi-k2.6) — AIAgent.run_conversation()</text>
+
+        <!-- SOUL / System Prompt -->
+        <rect x="50" y="470" width="180" height="150" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="140" y="495" fill="white" font-size="10" font-weight="600" text-anchor="middle">System Prompt</text>
+        <text x="140" y="513" fill="#94a3b8" font-size="8" text-anchor="middle">SOUL-minecraft.md</text>
+        <text x="140" y="528" fill="#94a3b8" font-size="8" text-anchor="middle">DC-112 Architecture</text>
+        <text x="140" y="543" fill="#94a3b8" font-size="8" text-anchor="middle">Pre-flight rules</text>
+        <text x="140" y="558" fill="#94a3b8" font-size="8" text-anchor="middle">Stuck recovery</text>
+        <text x="140" y="573" fill="#94a3b8" font-size="8" text-anchor="middle">No OP / No fair play</text>
+        <text x="140" y="591" fill="#a78bfa" font-size="7" text-anchor="middle">Composite + BODY</text>
+
+        <!-- Turn State -->
+        <rect x="270" y="470" width="180" height="150" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="360" y="495" fill="white" font-size="10" font-weight="600" text-anchor="middle">Turn State</text>
+        <text x="360" y="513" fill="#94a3b8" font-size="8" text-anchor="middle">Conversation history</text>
+        <text x="360" y="528" fill="#94a3b8" font-size="8" text-anchor="middle">Tool results queue</text>
+        <text x="360" y="543" fill="#94a3b8" font-size="8" text-anchor="middle">Iteration counter</text>
+        <text x="360" y="558" fill="#fb7185" font-size="8" text-anchor="middle">max_iterations: 80</text>
+        <text x="360" y="573" fill="#fb7185" font-size="8" text-anchor="middle">iteration_budget</text>
+        <text x="360" y="591" fill="#fb7185" font-size="8" text-anchor="middle">NO turn timeout</text>
+
+        <!-- Tool Calls -->
+        <rect x="490" y="470" width="180" height="150" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="580" y="495" fill="white" font-size="10" font-weight="600" text-anchor="middle">Tool Orchestrator</text>
+        <text x="580" y="513" fill="#94a3b8" font-size="8" text-anchor="middle">mc_perceive</text>
+        <text x="580" y="528" fill="#94a3b8" font-size="8" text-anchor="middle">mc_build / mc_move</text>
+        <text x="580" y="543" fill="#94a3b8" font-size="8" text-anchor="middle">mc_manage (bg tasks)</text>
+        <text x="580" y="558" fill="#94a3b8" font-size="8" text-anchor="middle">mc_chat / mc_craft</text>
+        <text x="580" y="573" fill="#94a3b8" font-size="8" text-anchor="middle">mc_combat</text>
+        <text x="580" y="591" fill="#a78bfa" font-size="7" text-anchor="middle">+ clarify, send_message</text>
+
+        <!-- Interrupt / Steer -->
+        <rect x="710" y="470" width="180" height="150" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="800" y="495" fill="white" font-size="10" font-weight="600" text-anchor="middle">Interrupt / Steer</text>
+        <text x="800" y="513" fill="#94a3b8" font-size="8" text-anchor="middle">_interrupt_requested</text>
+        <text x="800" y="528" fill="#94a3b8" font-size="8" text-anchor="middle">Chat → abort turn</text>
+        <text x="800" y="543" fill="#fb7185" font-size="8" text-anchor="middle">Steer → NO abort</text>
+        <text x="800" y="558" fill="#fb7185" font-size="8" text-anchor="middle">Turn runs 15+ min</text>
+        <text x="800" y="573" fill="#fb7185" font-size="8" text-anchor="middle">33 iterations → stuck</text>
+        <text x="800" y="591" fill="#fb7185" font-size="7" text-anchor="middle">⚠ No turn timeout</text>
+
+        <!-- Plan / Context -->
+        <rect x="930" y="470" width="220" height="150" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="1040" y="495" fill="white" font-size="10" font-weight="600" text-anchor="middle">Plan & Context</text>
+        <text x="1040" y="513" fill="#94a3b8" font-size="8" text-anchor="middle">plan-steve.json</text>
+        <text x="1040" y="528" fill="#94a3b8" font-size="8" text-anchor="middle">locations-steve.json</text>
+        <text x="1040" y="543" fill="#94a3b8" font-size="8" text-anchor="middle">Heartbeat → context</text>
+        <text x="1040" y="558" fill="#94a3b8" font-size="8" text-anchor="middle">Task status updates</text>
+        <text x="1040" y="573" fill="#94a3b8" font-size="8" text-anchor="middle">Memory (USER.md)</text>
+        <text x="1040" y="591" fill="#a78bfa" font-size="7" text-anchor="middle">Profile: ~/.hermes/profiles/steve</text>
+
+        <!-- ============================================================
+             FLOW ARROWS
+             ============================================================ -->
+
+        <!-- Flow 1: Heartbeat -->
+        <line x1="300" y1="340" x2="530" y2="340" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-green)"/>
+        <text x="415" y="335" fill="#34d399" font-size="8" text-anchor="middle">1. /status + /nearby</text>
+
+        <line x1="530" y1="340" x2="695" y2="340" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-green)"/>
+        <text x="612" y="335" fill="#34d399" font-size="8" text-anchor="middle">2. heartbeat/context</text>
+
+        <line x1="750" y1="340" x2="840" y2="340" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead-red)"/>
+        <text x="795" y="335" fill="#fb7185" font-size="8" text-anchor="middle">3. classify</text>
+
+        <path d="M 915 360 L 915 420 L 580 420 L 580 470" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="750" y="415" fill="#a78bfa" font-size="8" text-anchor="middle">4. steer / context injection</text>
+
+        <!-- Flow 2: Chat Interrupt -->
+        <line x1="115" y1="130" x2="115" y2="190" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+        <text x="140" y="165" fill="#22d3ee" font-size="8">chat</text>
+
+        <line x1="170" y1="95" x2="280" y2="95" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+        <line x1="410" y1="95" x2="500" y2="95" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <path d="M 555 130 L 555 180 L 530 180 L 530 230" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+        <text x="570" y="175" fill="#22d3ee" font-size="8">WebSocket</text>
+
+        <path d="M 530 360 L 460 360 L 460 420 L 360 420 L 360 470" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+        <text x="430" y="415" fill="#22d3ee" font-size="8" text-anchor="middle">5. chat_event → interrupt</text>
+
+        <!-- Flow 3: Tool Execution -->
+        <path d="M 580 620 L 580 670 L 300 670 L 300 620" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="440" y="665" fill="#a78bfa" font-size="8" text-anchor="middle">6. tool_call → HTTP → Bot → Minecraft</text>
+
+        <line x1="345" y1="130" x2="345" y2="190" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="360" y="165" fill="#a78bfa" font-size="8">execute</text>
+
+        <!-- Flow 4: Stuck -->
+        <path d="M 120 360 L 120 400 Q 120 420 140 420 L 200 420 Q 220 420 220 440 L 220 470" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead-red)"/>
+        <text x="170" y="415" fill="#fb7185" font-size="8">7. stuck → task_stuck → wake_up</text>
+
+        <!-- Flow 5: Dashboard -->
+        <line x1="1015" y1="130" x2="1015" y2="190" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+        <text x="1030" y="165" fill="#22d3ee" font-size="8">WS events</text>
+
+        <!-- ============================================================
+             PROBLEM ANNOTATIONS
+             ============================================================ -->
+        <rect x="50" y="680" width="350" height="110" rx="6" fill="rgba(136, 19, 55, 0.2)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="65" y="700" fill="#fb7185" font-size="10" font-weight="600">⚠ CRITICAL PROBLEMS</text>
+        <text x="65" y="718" fill="#fbbf24" font-size="8">1. Turn runs 15+ min with 33 iterations — NO timeout</text>
+        <text x="65" y="733" fill="#fbbf24" font-size="8">2. Steer injects but does NOT abort active turn</text>
+        <text x="65" y="748" fill="#fbbf24" font-size="8">3. Chat interrupt only checked between iterations</text>
+        <text x="65" y="763" fill="#fbbf24" font-size="8">4. Tool calls block until bot completes (sync wait)</text>
+        <text x="65" y="778" fill="#fbbf24" font-size="8">5. Prompt mixes "chain 80 actions" + "react quickly"</text>
+
+        <rect x="430" y="680" width="350" height="110" rx="6" fill="rgba(6, 78, 59, 0.2)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="445" y="700" fill="#34d399" font-size="10" font-weight="600">✓ RECENT FIXES</text>
+        <text x="445" y="718" fill="#94a3b8" font-size="8">1. Stuck now reported in heartbeat (task_stuck)</text>
+        <text x="445" y="733" fill="#94a3b8" font-size="8">2. Gateway classifies stuck as wake_up</text>
+        <text x="445" y="748" fill="#94a3b8" font-size="8">3. SOUL includes stuck recovery protocol</text>
+        <text x="445" y="763" fill="#94a3b8" font-size="8">4. Heartbeat interval: 60s (was 30s)</text>
+        <text x="445" y="778" fill="#94a3b8" font-size="8">5. busy_input_mode: steer (was interrupt)</text>
+
+        <rect x="810" y="680" width="350" height="110" rx="6" fill="rgba(251, 191, 36, 0.1)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="825" y="700" fill="#fbbf24" font-size="10" font-weight="600">? OPEN QUESTIONS</text>
+        <text x="825" y="718" fill="#94a3b8" font-size="8">1. Should max_iterations be 10 instead of 80?</text>
+        <text x="825" y="733" fill="#94a3b8" font-size="8">2. Should turns have a 2-min hard timeout?</text>
+        <text x="825" y="748" fill="#94a3b8" font-size="8">3. Should heartbeat be 10s during active turns?</text>
+        <text x="825" y="763" fill="#94a3b8" font-size="8">4. Should tool calls be async (non-blocking)?</text>
+        <text x="825" y="778" fill="#94a3b8" font-size="8">5. Should planning be separate from execution?</text>
+
+        <!-- ============================================================
+             LEGEND
+             ============================================================ -->
+        <text x="1020" y="455" fill="white" font-size="9" font-weight="600">Legend</text>
+        <rect x="1020" y="465" width="14" height="10" rx="2" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="1040" y="473" fill="#94a3b8" font-size="7">External</text>
+        <rect x="1020" y="480" width="14" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="1040" y="488" fill="#94a3b8" font-size="7">World/Cloud</text>
+        <rect x="1020" y="495" width="14" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="1040" y="503" fill="#94a3b8" font-size="7">Bot/Agent</text>
+        <rect x="1020" y="510" width="14" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="1040" y="518" fill="#94a3b8" font-size="7">Gateway/Security</text>
+        <rect x="1020" y="525" width="14" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1040" y="533" fill="#94a3b8" font-size="7">LLM/Brain</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>Flujo Roto: Turno Largo</h3>
+        </div>
+        <ul>
+          <li>• Steve inicia turno con mc_build(action="fill")</li>
+          <li>• Bot empieza a colocar bloques uno por uno</li>
+          <li>• Si el bot se queda stuck, el turno SIGUE corriendo</li>
+          <li>• 33 iteraciones después = 15 minutos sin progreso</li>
+          <li>• El steer del gateway llega pero no aborta el turno</li>
+          <li>• Resultado: plan cancelado por timeout de 5 min</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>Flujo Correcto: Chat Interrupt</h3>
+        </div>
+        <ul>
+          <li>• Usuario escribe en chat → Bot WebSocket</li>
+          <li>• Agent Loop setea chat_event = True</li>
+          <li>• AIAgent ve _interrupt_requested → aborta turno</li>
+          <li>• Próximo turno procesa el chat del usuario</li>
+          <li>• Self-echo filter evita loop infinito</li>
+          <li>• Idle auto-relay OFF (no spam cada 60s)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>Propuesta: Modo Reacción vs Ejecución</h3>
+        </div>
+        <ul>
+          <li>• <strong>Modo Reacción</strong>: max 3-5 iteraciones, 30s timeout</li>
+          <li>• Responde chat, stuck, eventos del mundo</li>
+          <li>• <strong>Modo Ejecución</strong>: bg tasks (bot autónomo)</li>
+          <li>• LLM planifica → delega a bg_goto / bg_collect</li>
+          <li>• Heartbeat cada 10s durante ejecución activa</li>
+          <li>• Si stuck → wake_up → reacción → corrección</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">
+      DaemonCraft • Steve Companion Mode • DC-112 Architecture • Branch: feat/steve-prompt-flow-iteration
+    </p>
+  </div>
+</body>
+</html>
