@@ -16,6 +16,22 @@ agents:
     extra_toolsets:
       - vision
     max_chat_chars: 480
+    # All bot-level configuration lives here — no more env var soup
+    bot_config:
+      minecraft:
+        host: localhost
+        port: 25565
+        auth: offline
+      server:
+        api_port: 3001
+      pathfinder:
+        allow_sprinting: false
+        can_dig: true
+        allow_parkour: true
+      chat:
+        fragment_max_chars: 240
+        max_fragments: 3
+        fragment_delay_ms: 300
 
 # Voice configuration for TTS output
 # The gateway reads these values and passes them to the TTS tool when

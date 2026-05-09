@@ -84,11 +84,9 @@ import {
   recipeDiagnostics,
   recipeIngredientCounts,
 } from './lib/action_feedback.js';
-// mine-photo is dead code — prismarine-viewer + puppeteer replaced it (see line 253).
-// The package is broken on Node 22 (fs.globSync at module load) so we stub Camera here.
-class Camera {
-  constructor() { throw new Error('mine-photo Camera disabled — use prismarine-viewer screenshot path'); }
-}
+// mine-photo removed — prismarine-viewer + puppeteer replaced it (see line 253).
+// The package was broken on Node 22 (fs.globSync at module load) and the
+// only call site (Camera ray-tracing init) was removed below.
 import { mineflayer as mineflayerViewer } from 'prismarine-viewer';
 import puppeteer from 'puppeteer';
 
@@ -237,22 +235,46 @@ function savePlan(plan) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Configuration
+// Configuration — single source of truth via JSON file
 // ═══════════════════════════════════════════════════════════════════
+
+// Parse CLI args first to find --config
+let configPath = null;
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === '--config' && process.argv[i + 1]) {
+    configPath = process.argv[i + 1];
+    i++;
+  }
+}
+
+// Load unified config (JSON) or fall back to env vars for backward compat
+let unifiedConfig = {};
+if (configPath && fs.existsSync(configPath)) {
+  try {
+    unifiedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    console.log(`[config] Loaded unified config from ${configPath}`);
+  } catch (err) {
+    console.warn(`[config] Failed to load ${configPath}:`, err.message);
+  }
+}
+
+const _cfg = (section, key, fallback) => {
+  return unifiedConfig[section]?.[key] ?? fallback;
+};
 
 const config = {
   mc: {
-    host: process.env.MC_HOST || 'localhost',
-    port: parseInt(process.env.MC_PORT || '25565'),
-    username: process.env.MC_USERNAME || 'HermesBot',
-    auth: process.env.MC_AUTH || 'offline',
+    host: _cfg('minecraft', 'host', process.env.MC_HOST || 'localhost'),
+    port: _cfg('minecraft', 'port', parseInt(process.env.MC_PORT || '25565')),
+    username: _cfg('minecraft', 'username', process.env.MC_USERNAME || 'HermesBot'),
+    auth: _cfg('minecraft', 'auth', process.env.MC_AUTH || 'offline'),
   },
   api: {
-    port: parseInt(process.env.API_PORT || '3001'),
+    port: _cfg('server', 'api_port', parseInt(process.env.API_PORT || '3001')),
   },
 };
 
-// Parse CLI args
+// Override CLI flags (highest priority)
 for (let i = 2; i < process.argv.length; i++) {
   const arg = process.argv[i];
   const next = process.argv[i + 1];
@@ -262,6 +284,18 @@ for (let i = 2; i < process.argv.length; i++) {
   if (arg === '--username' && next) { config.mc.username = next; i++; }
   if (arg === '--auth' && next) { config.mc.auth = next; i++; }
 }
+
+// Pathfinder settings from unified config
+const PATHFINDER_CFG = unifiedConfig.pathfinder || {};
+
+// Chat settings from unified config
+const CHAT_CFG = unifiedConfig.chat || {};
+const MC_FRAGMENT_MAX_CHARS = CHAT_CFG.fragment_max_chars ?? parseInt(process.env.MC_FRAGMENT_MAX_CHARS || "240", 10);
+const MC_MAX_FRAGMENTS = CHAT_CFG.max_fragments ?? parseInt(process.env.MC_MAX_FRAGMENTS || "3", 10);
+const MC_FRAGMENT_DELAY_MS = CHAT_CFG.fragment_delay_ms ?? parseInt(process.env.MC_FRAGMENT_DELAY_MS || "300", 10);
+
+// Workspace dir from unified config
+const WORKSPACE_DIR = unifiedConfig.workspace_dir || process.env.WORKSPACE_DIR || null;
 
 // ═══════════════════════════════════════════════════════════════════
 // Bot Manager
@@ -282,11 +316,6 @@ let reconnectTimeout = null; // Track active reconnect timer to cancel stale one
 let isConnecting = false; // Guard against concurrent createBot() calls
 const MAX_LOG = 100;
 const MAX_QUEUE = 20;
-
-// Minecraft chat chunking tunables
-const MC_FRAGMENT_MAX_CHARS = parseInt(process.env.MC_FRAGMENT_MAX_CHARS || "240", 10);
-const MC_MAX_FRAGMENTS = parseInt(process.env.MC_MAX_FRAGMENTS || "3", 10);
-const MC_FRAGMENT_DELAY_MS = parseInt(process.env.MC_FRAGMENT_DELAY_MS || "300", 10);
 const MC_PROTOCOL_BYTE_LIMIT = 256;        // Minecraft hard limit
 const MC_THROTTLE_WINDOW_MS = 10_000;
 const MC_THROTTLE_WINDOW_MAX = 5;
@@ -550,10 +579,24 @@ async function createBotImpl() {
 
       // Configure pathfinder
       const moves = new Movements(bot);
-      moves.allowSprinting = false;
-      moves.canDig = true;
-      moves.allowParkour = true;
+      moves.allowSprinting = PATHFINDER_CFG.allow_sprinting ?? false;
+      moves.canDig = PATHFINDER_CFG.can_dig ?? true;
+      moves.allowParkour = PATHFINDER_CFG.allow_parkour ?? true;
       bot.pathfinder.setMovements(moves);
+
+      // DEBUG: log pathfinder state every 5 seconds
+      setInterval(() => {
+        if (!bot || !bot.pathfinder) return;
+        const goal = bot.pathfinder.goal;
+        const isMoving = bot.pathfinder.isMoving ? bot.pathfinder.isMoving() : false;
+        const pos = bot.entity ? bot.entity.position : null;
+        const posStr = pos ? `${pos.x.toFixed(1)},${pos.y.toFixed(1)},${pos.z.toFixed(1)}` : 'unknown';
+        if (goal) {
+          log(`[PATHFINDER] moving=${isMoving} pos=${posStr} goal=${goal.constructor.name}`);
+        } else if (isMoving) {
+          log(`[PATHFINDER] moving=${isMoving} pos=${posStr} goal=null`);
+        }
+      }, 5000);
 
       // Auto-disguise as Allay — Pamplinas is always the daemoncito
       setTimeout(() => {
@@ -1306,6 +1349,13 @@ function getFullState() {
     fairPlay: fairPlayMode,
     hardcore: bot.game?.hardcore || false,
     permanentlyDead: hardcoreDead,
+    // Task state — critical for heartbeat reactivity
+    task: currentTask ? {
+      status: currentTask.status,
+      action: currentTask.action,
+      error: currentTask.error || undefined,
+      elapsed_s: currentTask.started ? Math.round((Date.now() - currentTask.started) / 1000) : undefined,
+    } : null,
   };
 }
 
