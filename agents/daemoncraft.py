@@ -179,7 +179,8 @@ def ensure_base_profile() -> Path:
         "toolsets": ["minecraft", "messaging"],
         "platform_toolsets": {"cli": ["minecraft", "clarify", "messaging"]},
         "agent": {
-            "max_turns": 100,
+            "max_turns": 6,
+            "turn_timeout_seconds": 45,
             "gateway_timeout": 1800,
             "restart_drain_timeout": 60,
             "api_max_retries": 3,
@@ -273,9 +274,9 @@ def setup_agent_profile(
     config = yaml.safe_load(config_path.read_text()) or {} if config_path.exists() else {}
 
     # Set model with provider — infer provider from model name if not specified
+    provider = agent.get("provider")
+    base_url = agent.get("base_url")
     if model:
-        provider = agent.get("provider")
-        base_url = agent.get("base_url")
         if not provider:
             # Auto-infer provider from model name
             model_lower = model.lower()
@@ -299,9 +300,14 @@ def setup_agent_profile(
             config["model"]["provider"] = provider
         if base_url:
             config["providers"] = config.get("providers", {})
+            # Remove stale providers that don't match the current one
+            stale = [k for k in config["providers"].keys() if k != provider]
+            for k in stale:
+                del config["providers"][k]
             config["providers"][provider] = {
                 "provider": provider,
                 "base_url": base_url,
+                "api_mode": "anthropic_messages",
             }
 
     config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
@@ -321,7 +327,7 @@ def setup_agent_profile(
         config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
         log(f"Added extra toolsets for {name}: {extra_toolsets}", cast_name)
 
-    # Update .env with MC_API_URL
+    # Update .env with MC_API_URL and provider-specific overrides
     env_path = profile_dir / ".env"
     env_lines = []
     if env_path.exists():
@@ -329,6 +335,16 @@ def setup_agent_profile(
 
     new_lines = [ln for ln in env_lines if not ln.startswith("MC_API_URL=")]
     new_lines.append(f"MC_API_URL=http://localhost:{port}")
+
+    # Ensure provider-specific base_url is in .env (source of truth for agents)
+    if provider and base_url:
+        prov_upper = provider.upper().replace("-", "_").replace("_OAUTH", "")
+        base_url_key = f"{prov_upper}_BASE_URL"
+        # Remove any existing line for this provider's base_url
+        new_lines = [ln for ln in new_lines if not ln.startswith(f"{base_url_key}=")]
+        new_lines.append(f"{base_url_key}={base_url}")
+        log(f"Set {base_url_key}={base_url} in profile .env for {name}", cast_name)
+
     env_path.write_text("\n".join(new_lines) + "\n")
 
     # Install behavior skills
@@ -352,19 +368,50 @@ def start_bot(
     mc_host: str = DEFAULT_MC_HOST,
     mc_port: int = DEFAULT_MC_PORT,
     workspace_dir: str | None = None,
+    bot_config: dict | None = None,
 ) -> int:
     """Start the Mineflayer bot server. Returns PID."""
     lf = log_file(cast_name, agent_name, "bot")
     out = open(lf, "a")
 
+    # Build unified config JSON — single source of truth for the bot server
+    cfg = {
+        "minecraft": {
+            "host": mc_host,
+            "port": mc_port,
+            "username": agent_name,
+            "auth": "offline",
+        },
+        "server": {
+            "api_port": port,
+        },
+        "pathfinder": {
+            "allow_sprinting": False,
+            "can_dig": True,
+            "allow_parkour": True,
+        },
+        "chat": {
+            "fragment_max_chars": 240,
+            "max_fragments": 3,
+            "fragment_delay_ms": 300,
+        },
+        "workspace_dir": workspace_dir,
+        "known_bots": _get_all_known_bots(),
+    }
+    # Overlay cast-specific bot_config if provided
+    if bot_config:
+        for key, value in bot_config.items():
+            if isinstance(value, dict) and key in cfg and isinstance(cfg[key], dict):
+                cfg[key].update(value)
+            else:
+                cfg[key] = value
+
+    config_path = BOT_DIR / f"config-{agent_name.lower()}.json"
+    config_path.write_text(json.dumps(cfg, indent=2))
+
     env = {
         **os.environ,
-        "MC_HOST": mc_host,
-        "MC_PORT": str(mc_port),
-        "MC_USERNAME": agent_name,
-        "MC_AUTH": "offline",
-        "API_PORT": str(port),
-        "MC_KNOWN_BOTS": _get_all_known_bots(),
+        "MC_KNOWN_BOTS": cfg["known_bots"],
     }
     if workspace_dir:
         env["WORKSPACE_DIR"] = workspace_dir
@@ -372,7 +419,7 @@ def start_bot(
 
     log(f"Starting bot {agent_name} on port {port}...", cast_name)
     proc = subprocess.Popen(
-        ["node", "server.js"],
+        ["node", "server.js", "--config", str(config_path)],
         cwd=str(BOT_DIR),
         env=env,
         stdout=out,
@@ -413,26 +460,30 @@ def start_agent(
     immortal: bool = False,
 ) -> int:
     """Start the Hermes agent using the native persistent loop. Returns PID."""
-    profile_name = agent_name.lower().replace(" ", "-")
+    from agents.workspace import get_agent_venv_python
+
     lf = log_file(cast_name, agent_name, "agent")
     out = open(lf, "a")
 
-    # Use the Hermes venv Python so imports work
-    hermes_venv_python = str(Path.home() / ".hermes" / "hermes-agent" / "venv" / "bin" / "python")
+    hermes_venv_python = get_agent_venv_python(agent_name)
     agent_loop_script = str(SCRIPT_DIR / "agent_loop.py")
 
     standby_file = str(get_pid_dir(cast_name) / f"{agent_name}_standby")
 
+    safe_name = agent_name.lower().replace(" ", "-")
+    hermes_home = str(Path.home() / "agents" / safe_name / "hermes-home")
+
     env = {
         **os.environ,
+        "HERMES_HOME": hermes_home,
         "MC_API_URL": f"http://localhost:{port}",
         "MC_USERNAME": agent_name,
         "STANDBY_FILE": standby_file,
         "MC_KNOWN_BOTS": _get_all_known_bots(),
-        # Enable send_message tool by telling Hermes we're on a messaging platform.
         "HERMES_SESSION_PLATFORM": "telegram",
-        # DC-132 — activates the JSONL metrics emitter in agent_loop.py.
         "MC_METRICS_CAST": cast_name,
+        "HERMES_MAX_ITERATIONS": "6",
+        "HERMES_TURN_TIMEOUT_SECONDS": "45",
         # DC-109 — feature flags for gateway/loop coordination (default off)
         "GATEWAY_HANDLES_QUEST_EVENTS": os.getenv("GATEWAY_HANDLES_QUEST_EVENTS", "0"),
         "GATEWAY_HANDLES_CHAT": os.getenv("GATEWAY_HANDLES_CHAT", "0"),
@@ -440,13 +491,12 @@ def start_agent(
     if max_chat_chars:
         env["MC_MAX_CHAT_CHARS"] = str(max_chat_chars)
 
-    # Only enable daemon guardian for immortal agents (e.g. rolemaster)
     if immortal:
         env["DAEMON_GUARDIAN"] = "1"
 
     log(f"Starting persistent agent for {agent_name}...", cast_name)
     proc = subprocess.Popen(
-        [hermes_venv_python, agent_loop_script, "--profile", profile_name, "--prompt", "Begin.", "--interval", str(interval)],
+        [hermes_venv_python, agent_loop_script, "--prompt", "Begin.", "--interval", str(interval)],
         env=env,
         stdout=out,
         stderr=subprocess.STDOUT,
@@ -459,7 +509,37 @@ def start_agent(
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
+def update_hermes_platform_config(bot_api_url: str, bot_username: str, profile_name: str | None = None) -> None:
+    """Update the global Hermes config.yaml with the active DaemonCraft bot endpoint.
+
+    The gateway adapter reads platforms.daemoncraft.extra.bot_api_url to know
+    which Mineflayer bot to connect to. This eliminates the need for a stale
+    process-global MC_API_URL env var in the systemd service.
+    """
+    config_path = Path.home() / ".hermes" / "config.yaml"
+    if not config_path.exists():
+        log(f"Warning: Hermes config not found at {config_path}")
+        return
+    try:
+        import yaml
+        config = yaml.safe_load(config_path.read_text()) or {}
+        platforms = config.setdefault("platforms", {})
+        daemoncraft = platforms.setdefault("daemoncraft", {})
+        daemoncraft["enabled"] = True
+        extra = daemoncraft.setdefault("extra", {})
+        extra["bot_api_url"] = bot_api_url
+        extra["bot_username"] = bot_username
+        if profile_name:
+            extra["profile"] = profile_name
+        config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+        log(f"Updated Hermes config: daemoncraft bot -> {bot_api_url} ({bot_username}) profile={profile_name or '(unchanged)'}")
+    except Exception as e:
+        log(f"Warning: failed to update Hermes config: {e}")
+
+
 def cmd_start(cast_name: str, cast: dict, mc_host: str, mc_port: int):
+    from agents.workspace import bootstrap_agent_workspace, start_agent_gateway
+
     agents = cast.get("agents", [])
     soul_file = None
     if "soul_file" in cast:
@@ -480,14 +560,89 @@ def cmd_start(cast_name: str, cast: dict, mc_host: str, mc_port: int):
             log(f"{name} already running (bot {bot_pid}, agent {agent_pid})", cast_name)
             continue
 
-        # 1. Setup profile
-        profile_dir = setup_agent_profile(cast_name, agent, soul_file)
-        workspace_dir = str(profile_dir / "workspace")
+        # 1. Bootstrap per-agent workspace with its own gateway
+        model = agent.get("model", "MiniMax-M2.7")
+        provider = agent.get("provider", "minimax")
+        base_url = agent.get("base_url", "https://api.minimax.io/anthropic")
+        extra_toolsets = agent.get("extra_toolsets", [])
+
+        workspace = bootstrap_agent_workspace(
+            agent_name=name,
+            port=port,
+            model=model,
+            provider=provider,
+            base_url=base_url,
+            extra_toolsets=extra_toolsets,
+            cast_name=cast_name,
+        )
+        workspace_dir = str(workspace)
+
+        # 1b. Compose SOUL: base + cast + character + memory infrastructure
+        soul_parts = []
+
+        # Base SOUL — universal DaemonCraft rules
+        if BASE_SOUL_FILE.exists():
+            soul_parts.append(BASE_SOUL_FILE.read_text())
+
+        # Cast-specific SOUL — mode behavior (e.g. companion, landfolk)
+        if soul_file and soul_file.exists():
+            soul_parts.append(f"\n\n---\n\n{soul_file.read_text()}")
+
+        # Character prompt — individual personality
+        template = agent.get("template", name.lower())
+        prompt_file = PROMPTS_DIR / f"{template}.md"
+        if not prompt_file.exists():
+            prompt_file = PROMPTS_DIR / template / f"{template}.md"
+        if prompt_file.exists():
+            soul_parts.append(f"\n\n---\n\n{prompt_file.read_text()}")
+        else:
+            log(f"Warning: no prompt found for template '{template}'", cast_name)
+
+        # Memory infrastructure section
+        memory_section = """
+## Memory Infrastructure
+
+Your durable memory lives in `agent-memory/library.db` (SQLite + semantic search).  
+It is NOT injected into every turn — you must actively retrieve when context is missing.
+
+**To recall past work or search memory:** load the `mariano-memory-kit` skill first  
+(`skill_view(name='mariano-memory-kit')`), then use `memoryctl.py hybrid-pack`.
+
+**The `hmk-memory` plugin auto-injects relevant memories** on each turn via prefetch.  
+You don't need to do anything for this — it happens automatically.
+
+**Quick retrieval without the skill:**
+```
+./scripts/hmk memoryctl.py hybrid-pack --query "what matters here" --budget 1500
+```
+
+**When to query memory:**
+- Player references past events → `--shelf mc-episodic`
+- You need to know a location → `--shelf mc-places`
+- You need crafting/building techniques → `--shelf mc-skills`
+- You need facts about other players → `--shelf mc-social`
+- You need project plans or architecture → `--shelf plans` or `--shelf library`
+"""
+        soul_parts.append(memory_section.strip())
+
+        if soul_parts:
+            soul_dst = workspace / "hermes-home" / "SOUL.md"
+            soul_dst.write_text("\n".join(soul_parts))
+            log(f"Composed SOUL for {name} ({len(soul_parts)} parts)", cast_name)
+
+        # 1c. Copy BODY.md to workspace
+        if BODY_FILE.exists():
+            body_dst = workspace / "hermes-home" / "BODY.md"
+            shutil.copy2(BODY_FILE, body_dst)
+            log(f"BODY.md copied for {name}", cast_name)
+
+        # 1d. Start the gateway for this agent
+        start_agent_gateway(name, cast_name)
 
         # 2. Start bot
-        start_bot(cast_name, name, port, mc_host, mc_port, workspace_dir)
+        start_bot(cast_name, name, port, mc_host, mc_port, workspace_dir, agent.get("bot_config"))
 
-        # 2b. Set gamemode if specified in cast config
+        # 2b. Set gamemode if specified
         gamemode = agent.get("gamemode")
         if gamemode:
             try:
@@ -509,15 +664,17 @@ def cmd_start(cast_name: str, cast: dict, mc_host: str, mc_port: int):
         max_chat_chars = agent.get("max_chat_chars")
         start_agent(cast_name, name, port, max_chat_chars=max_chat_chars, immortal=agent.get("immortal", False))
 
-        time.sleep(2)  # Stagger to avoid resource spikes
+        time.sleep(2)
 
     log(f"Cast '{cast_name}' launched.", cast_name)
 
 
 def cmd_status(cast_name: str, cast: dict):
+    from agents.workspace import gateway_is_running
+
     agents = cast.get("agents", [])
-    print(f"\n{'Agent':<12} {'Bot PID':<10} {'Bot OK':<8} {'Agent PID':<10} {'Agent OK':<8}")
-    print("-" * 60)
+    print(f"\n{'Agent':<12} {'Bot PID':<10} {'Bot OK':<8} {'Agent PID':<10} {'Agent OK':<8} {'Gateway':<10}")
+    print("-" * 70)
     all_ok = True
     for agent in agents:
         name = agent["name"]
@@ -525,17 +682,20 @@ def cmd_status(cast_name: str, cast: dict):
         agent_pid = read_pid(cast_name, name, "agent")
         bot_ok = "yes" if bot_pid and is_alive(bot_pid) else "NO"
         agent_ok = "yes" if agent_pid and is_alive(agent_pid) else "NO"
-        if bot_ok == "NO" or agent_ok == "NO":
+        gw_ok = "yes" if gateway_is_running(name) else "NO"
+        if bot_ok == "NO" or agent_ok == "NO" or gw_ok == "NO":
             all_ok = False
-        print(f"{name:<12} {str(bot_pid or '-'):<10} {bot_ok:<8} {str(agent_pid or '-'):<10} {agent_ok:<8}")
+        print(f"{name:<12} {str(bot_pid or '-'):<10} {bot_ok:<8} {str(agent_pid or '-'):<10} {agent_ok:<8} {gw_ok:<10}")
     print()
     if all_ok:
-        log(f"All {len(agents)} agents healthy.", cast_name)
+        log(f"All {len(agents)} agents healthy (bot + agent + gateway).", cast_name)
     else:
-        log("Some agents are not running!", cast_name)
+        log("Some agents are not fully running!", cast_name)
 
 
 def cmd_stop(cast_name: str, cast: dict, target_name: str | None = None):
+    from agents.workspace import stop_agent_gateway
+
     agents = cast.get("agents", [])
     if target_name:
         agents = [a for a in agents if a["name"].lower() == target_name.lower()]
@@ -559,7 +719,9 @@ def cmd_stop(cast_name: str, cast: dict, target_name: str | None = None):
                 except ProcessLookupError:
                     pass
             remove_pid(cast_name, name, kind)
-        log(f"{name} stopped.", cast_name)
+        # Stop the gateway
+        stop_agent_gateway(name, cast_name)
+        log(f"{name} stopped (bot + agent + gateway).", cast_name)
 
     if target_name:
         log(f"Agent '{target_name}' stopped.", cast_name)
@@ -710,7 +872,7 @@ def cmd_daemon(cast_name: str, cast: dict, mc_host: str, mc_port: int):
                 try:
                     profile_dir = setup_agent_profile(cast_name, agent, soul_file)
                     workspace_dir = str(profile_dir / "workspace")
-                    start_bot(cast_name, name, port, mc_host, mc_port, workspace_dir)
+                    start_bot(cast_name, name, port, mc_host, mc_port, workspace_dir, agent.get("bot_config"))
                 except SystemExit:
                     pass
 
