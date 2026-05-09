@@ -595,7 +595,7 @@ NEVER change LLM provider or model configurations without explicit user confirma
 - **State**: Per-agent workspace isolation in Hermes profiles
 - **Tests**: 3 automated test suites (tools, configs, profiles)
 - **Deploy**: Landfolk cast (5 agents) running on live Minecraft server
-- **Lattice**: Now used via terminal CLI (skill: lattice-cli). MCP server disabled.
+- **Kanban**: Task tracking via Hermes Kanban (`hermes kanban --board daemoncraft`). Dispatcher OFF — manual mode only.
 - **Config**: Removed mcp_servers from ~/.hermes/config.yaml
 - **Daemon mode**: Implemented supervisor loop that restarts dead agents/bots (DC-13)
 - **Toolset restriction**: Stripped terminal/file/web from agents to prevent rogue subprocesses
@@ -618,17 +618,20 @@ NEVER change LLM provider or model configurations without explicit user confirma
 - **Pamplinas team**: Added to daemoncraft_vis datapack (light_purple team, coords HUD)
 - **Hover removed**: Spring-damper hover physics removed — interfered with pathfinder/follow movement. Pamplinas now uses standard creative flight only.
 
-## Lattice Task Status
+## Kanban Task Tracking (migrated from Lattice 2026-05-08)
 
-Done: DC-1 through DC-8, DC-10 through DC-28, DC-68 through DC-76, DC-95 through DC-112, DC-118 through DC-122  
-Cancelled: DC-78 (Multiverse Pipeline), DC-80 (Lobby Matrix), DC-82 (Showroom), DC-83 (Relocatable blueprints) — discarded in favor of in-world design (2026-04-28)  
-Backlog: DC-77 (error frequency tracker), DC-79 (blueprint conversion), DC-81 (blueprint compiler), DC-84 (regeneration), DC-85 through DC-91 (in-world blueprint engine), DC-111 (spike: Hermes /voice mode), DC-123 (dashboard/TTS regression after DC-112), DC-124 through DC-132 (Server Setup Overhaul epic — see plans/DC-124.md)
+Board: `hermes kanban --board daemoncraft`
+Status: manual mode (dispatcher OFF). All tasks in triage — reviewed together via web dashboard.
+CLI: `hermes kanban --board daemoncraft list|show|create|comment|complete|...`
+
+Active tasks migrated: 64 (all non-done/non-cancelled from Lattice).
+Done tasks (100) not migrated — kept as historical record in .lattice.backup/.
 
 ### Epic: DC-124 / DC-126 — Server Setup Overhaul
 
 **Status: IN PROGRESS (2026-05-03).**
 
-The original DC-124 was "Per-profile fairPlayMode" (backlog). The Server Setup Overhaul epic is now tracked as **DC-126** in Lattice ("Epic: Server Setup Overhaul -- Visual & Infra Upgrade", backlog).
+The original DC-124 was "Per-profile fairPlayMode" (backlog). The Server Setup Overhaul epic is now tracked as **DC-126** in Kanban ("Epic: Server Setup Overhaul -- Visual & Infra Upgrade", triage).
 
 **What was merged today (PRs #2–#6):**
 - PR #2: Geyser/Bedrock crossplay support
@@ -639,7 +642,7 @@ The original DC-124 was "Per-profile fairPlayMode" (backlog). The Server Setup O
 
 **Post-merge fix — WorldEdit wand:** Default wand item is `wooden_axe`, which intercepts left-clicks and shows "First position set to..." instead of breaking blocks. Changed to `blaze_rod` in `server/data/plugins/WorldEdit/config.yml`. This change is live in the container volume but NOT in git (server/data/ is .gitignored). Needs persistence mechanism.
 
-**Remaining work (not yet in Lattice):**
+**Remaining work (now in Kanban):**
 - Image SHA pin + plugin version inventory
 - SkinsRestorer + DecentHolograms visual configuration
 - `daemoncraft.mrpack` Java client pack
@@ -846,7 +849,7 @@ Minecraft Agent Error Feedback Pattern: Agents require actionable tool errors to
 
 The agent loop for Minecraft bots ('agent_loop.py') maintains a 30s interval but lacks aggressive backoff or jitter, which previously caused token quota exhaustion on expensive models like kimi-k2.6 when running a 7-bot cast. Usage optimization (switching to MiniMax-M2.7) and aggressive history trimming are preferred to preserve coding tokens.
 
-DaemonCraft Planning Architecture: User prefers persistent, long-term planning over reactive loops. Agents should use a structured Goal & Task system (JSON-based) that persists across turns. Explicit support for a 'Rolemaster' mode (Game Master agent driving narrative/world events). Interest in using Lattice (or a similar dashboard) for real-time visibility and inter-agent coordination of these plans. Strategy roles should be assigned to specific agents for collective orchestration.
+DaemonCraft Planning Architecture: User prefers persistent, long-term planning over reactive loops. Agents should use a structured Goal & Task system (JSON-based) that persists across turns. Explicit support for a 'Rolemaster' mode (Game Master agent driving narrative/world events). Interest in using Kanban (or a similar dashboard) for real-time visibility and inter-agent coordination of these plans. Strategy roles should be assigned to specific agents for collective orchestration.
 
 ---
 
