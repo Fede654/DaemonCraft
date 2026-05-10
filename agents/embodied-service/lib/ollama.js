@@ -95,8 +95,14 @@ export async function callGemmaAndy(payload, { signal, options = {} } = {}) {
     // Rule 1: NO system message. Only `role: "user"`.
     messages: [{ role: "user", content: userContent }],
     options: {
-      // Defaults match Modelfile but allow num_predict bump for <think> outputs.
-      num_predict: 1024,
+      // Mirror the reference invocation in Mar-IA-no/deamoncraft-gemma4-andy:
+      // examples/eval_with_adapter.py uses do_sample=False (greedy), and
+      // docs/OLLAMA_USAGE.md shows production calls with temperature=0.0,
+      // num_predict=512. Field-test 2026-05-09 surfaced that the
+      // Modelfile default temperature=0.2 produced enough variance for
+      // fabricated goto coords; greedy sampling stabilizes outputs.
+      temperature: 0.0,
+      num_predict: 512,
       ...options,
     },
   };
