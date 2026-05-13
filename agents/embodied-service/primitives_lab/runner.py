@@ -110,6 +110,64 @@ def fixture_compatible(fixture: dict, snapshot: dict) -> tuple[bool, list[str]]:
     return True, warnings  # never block; surface as warnings
 
 
+def teleport_to_fresh_ground() -> dict:
+    """Move the bot to a location likely free of placed blocks from prior runs.
+    Uses bot-native find_blocks + goto_near (no server /tp required)."""
+    import math
+    try:
+        status = requests.get(f"{BOT_API}/status", timeout=5).json()
+        pos = status["data"]["position"]
+        px, py, pz = pos["x"], pos["y"], pos["z"]
+    except Exception as e:
+        return {"ok": False, "message": f"failed to read bot position: {e}"}
+
+    # 1. Find contamination markers (oak_planks from prior runs)
+    oak_locs: list[tuple[float, float, float]] = []
+    try:
+        r = requests.post(f"{BOT_API}/action/find_blocks", json={"block": "oak_planks", "radius": 64, "count": 50}, timeout=10)
+        for loc in r.json().get("locations", []):
+            oak_locs.append((loc["x"], loc["y"], loc["z"]))
+    except Exception:
+        pass
+
+    # 2. Search for walkable surface blocks
+    candidates: list[tuple[int, int, int, str]] = []
+    for block_type in ("grass_block", "dirt", "stone", "sand", "gravel"):
+        try:
+            r = requests.post(f"{BOT_API}/action/find_blocks", json={"block": block_type, "radius": 64, "count": 50}, timeout=10)
+            for loc in r.json().get("locations", []):
+                if loc["y"] >= 64:
+                    candidates.append((loc["x"], loc["y"], loc["z"], block_type))
+        except Exception:
+            continue
+
+    if not candidates:
+        return {"ok": False, "message": "no walkable surface blocks found with y>=64"}
+
+    def _score(cx: int, cy: int, cz: int) -> float:
+        d_current = math.dist((cx, cy, cz), (px, py, pz))
+        if oak_locs:
+            d_oak = min(math.dist((cx, cy, cz), o) for o in oak_locs)
+        else:
+            d_oak = 999.0
+        # Prioritize distance from contamination, then distance from current
+        return d_oak * 2.0 + d_current * 0.5
+
+    best = max(candidates, key=lambda c: _score(c[0], c[1], c[2]))
+    tx, ty, tz, bt = best
+
+    # 3. Goto near the target (stand on top of the block)
+    try:
+        r = requests.post(f"{BOT_API}/action/goto_near", json={"x": tx, "y": ty + 1, "z": tz, "range": 2}, timeout=25)
+        data = r.json()
+        if data.get("ok"):
+            return {"ok": True, "message": f"teleported to {bt} at ({tx},{ty},{tz})", "target": [tx, ty + 1, tz]}
+        else:
+            return {"ok": False, "message": f"goto_near failed: {data.get('result', data)}"}
+    except Exception as e:
+        return {"ok": False, "message": f"goto_near exception: {e}"}
+
+
 # ── Single sample execution ───────────────────────────────────────
 
 def call_embodied_plan(primitives: dict, deadline: int = 30) -> dict:
@@ -274,6 +332,7 @@ def main():
     p.add_argument("--samples", type=int, help="override samples_per_variant")
     p.add_argument("--deadline", type=int, default=45, help="per-call deadline seconds")
     p.add_argument("--output-dir", type=Path, default=RESULTS_DIR)
+    p.add_argument("--no-teleport", action="store_true", help="skip pre-experiment world-state teleport")
     args = p.parse_args()
 
     ok, msg = health_check()
@@ -283,6 +342,14 @@ def main():
 
     spec = load_experiment(args.experiment)
     fixture = load_fixture(spec.get("fixture"))
+
+    if not args.no_teleport:
+        print("[teleport] Moving bot to fresh ground...")
+        tp = teleport_to_fresh_ground()
+        print(f"[teleport] {'OK' if tp['ok'] else 'FAIL'}: {tp['message']}")
+        if not tp["ok"]:
+            print("[teleport] Continuing with current position anyway.", file=sys.stderr)
+
     snapshot = current_world_snapshot()
 
     print(f"━━━ {spec['id']} ━━━")
