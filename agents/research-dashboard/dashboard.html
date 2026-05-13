@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Research Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#0d1117; --bg-panel:#161b22; --bg-deep:#010409;
+    --border:#30363d; --border-dim:#21262d;
+    --fg:#c9d1d9; --fg-dim:#8b949e; --fg-faint:#6e7681;
+    --accent:#58a6ff; --accent-purple:#d2a8ff;
+    --good:#56d364; --good-bg:#1f4429;
+    --warn:#d29922; --warn-bg:#422006;
+    --bad:#f85149;  --bad-bg:#4c1d1d;
+    --mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.45;
+    font-size: 14px;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 {
+    font-size: 1.05rem;
+    color: var(--accent);
+    margin-right: auto;
+  }
+  header h1 .sep { color: var(--fg-faint); margin: 0 6px; }
+  header h1 .task-title { color: var(--fg); font-weight: 400; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    background: var(--border-dim);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+  }
+  .pill.status-running { background: var(--good-bg); color: var(--good); border-color:#2ea043; }
+  .pill.status-blocked { background: var(--warn-bg); color: var(--warn); border-color:#9e6a03; }
+  .pill.status-ready,
+  .pill.status-done    { background: var(--bg-deep); color: var(--fg-dim); }
+  .pill.status-crashed,
+  .pill.status-failed  { background: var(--bad-bg); color: var(--bad); border-color:#b62324; }
+  .pill .dot {
+    width:6px; height:6px; border-radius:50%; background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .pill.status-running .dot { animation: pulse 1.4s infinite ease-in-out; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+  /* ── Layout grid ────────────────────────────────────────── */
+  main {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: minmax(0,1.4fr) minmax(0,1fr);
+    gap: 12px;
+  }
+  .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+
+  /* ── Panels ─────────────────────────────────────────────── */
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    min-width: 0;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .panel.flash {
+    border-color: var(--good);
+    box-shadow: 0 0 0 1px var(--good), 0 0 12px rgba(86,211,100,0.35);
+  }
+  .panel.flash > header.panel-head { background: rgba(86,211,100,0.10); }
+  .hero.flash {
+    border-color: var(--good);
+    box-shadow: 0 0 0 1px var(--good), 0 0 14px rgba(86,211,100,0.30);
+  }
+  .panel > header.panel-head {
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border-dim);
+    padding: 8px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+    position: static;
+  }
+  .panel-head h2 {
+    font-size: 0.78rem;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .panel-head .panel-meta { color: var(--fg-faint); font-size: 0.72rem; font-family: var(--mono); }
+  .panel-body { padding: 10px 14px; min-width: 0; }
+  .panel.scroll .panel-body { max-height: 480px; overflow-y: auto; }
+  .panel.tall .panel-body  { max-height: 640px; overflow-y: auto; }
+  .empty { color: var(--fg-faint); font-style: italic; padding: 8px 0; font-size: 0.85rem; }
+
+  /* ── Hero: current state ─────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, rgba(88,166,255,0.07), rgba(210,168,255,0.05));
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .hero .hero-row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .hero .hero-cell { flex: 1; min-width: 200px; }
+  .hero .label {
+    font-size: 0.7rem;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+  .hero .value { font-family: var(--mono); color: var(--fg); font-size: 0.92rem; word-break: break-word; }
+  .hero .value.big { font-size: 1.15rem; color: var(--accent); }
+  .hero .value pre { background: var(--bg-deep); padding: 8px 10px; border-radius: 4px; max-height: 5em; overflow-y: auto; font-size: 0.78rem; white-space: pre-wrap; }
+
+  /* ── Stat rows / KPI cards ─────────────────────────────────── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+  }
+  .kpi {
+    background: var(--bg-deep);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .kpi .lbl { color: var(--fg-faint); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kpi .val { color: var(--fg); font-family: var(--mono); font-size: 0.95rem; margin-top: 2px; }
+  .kpi .val.good { color: var(--good); }
+  .kpi .val.warn { color: var(--warn); }
+  .kpi .val.bad  { color: var(--bad);  }
+  .kpi .val.muted { color: var(--fg-faint); }
+
+  /* ── Tool-call timeline (most-recent at top) ─────────────── */
+  .turn {
+    border-left: 3px solid var(--border-dim);
+    padding: 5px 10px 5px 10px;
+    margin-bottom: 6px;
+    font-size: 0.82rem;
+    border-radius: 0 4px 4px 0;
+    background: var(--bg-deep);
+  }
+  .turn.user      { border-left-color: var(--accent); }
+  .turn.assistant { border-left-color: var(--accent-purple); }
+  .turn.tool      { border-left-color: var(--good); }
+  .turn .meta { color: var(--fg-faint); font-size: 0.7rem; font-family: var(--mono); margin-bottom: 3px; }
+  .turn .content { color: var(--fg); white-space: pre-wrap; word-break: break-word; max-height: 6em; overflow: hidden; font-size: 0.8rem; }
+  .turn .tool-call {
+    color: var(--accent-purple);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    margin: 3px 0 0 0;
+    padding: 2px 6px;
+    background: rgba(210,168,255,0.08);
+    border-radius: 4px;
+    word-break: break-all;
+  }
+  .turn .tool-call .args { color: var(--fg-faint); }
+  .turn .tool-call::before { content: "🛠️ "; }
+
+  /* ── Events feed (kanban) ────────────────────────────────── */
+  .event {
+    padding: 4px 8px;
+    margin-bottom: 3px;
+    border-radius: 4px;
+    font-size: 0.76rem;
+    font-family: var(--mono);
+    background: var(--bg-deep);
+    border-left: 2px solid var(--border);
+    display: flex; gap: 8px; align-items: baseline;
+  }
+  .event .ts { color: var(--fg-faint); flex-shrink: 0; }
+  .event .kind {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--border-dim);
+    color: var(--accent);
+    flex-shrink: 0;
+    font-size: 0.7rem;
+  }
+  .event .kind.crashed,
+  .event .kind.gave_up   { background: var(--bad-bg); color: var(--bad); }
+  .event .kind.blocked   { background: var(--warn-bg); color: var(--warn); }
+  .event .kind.heartbeat,
+  .event .kind.spawned,
+  .event .kind.unblocked,
+  .event .kind.claimed,
+  .event .kind.created   { background: var(--good-bg); color: var(--good); }
+  .event .kind.commented { background: var(--border-dim); color: var(--accent-purple); }
+  .event .run-id { color: var(--fg-faint); font-size: 0.7rem; flex-shrink: 0; }
+  .event .body { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Runs Gantt (compact horizontal bars) ────────────────── */
+  .gantt {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 6px 10px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+  }
+  .gantt .run-id   { color: var(--fg-dim); }
+  .gantt .run-bar  { background: var(--bg-deep); height: 14px; border-radius: 3px; position: relative; overflow: hidden; }
+  .gantt .run-bar .seg { position: absolute; top: 0; bottom: 0; }
+  .gantt .run-bar .seg.blocked   { background: var(--warn); opacity: 0.75; }
+  .gantt .run-bar .seg.crashed   { background: var(--bad); opacity: 0.75; }
+  .gantt .run-bar .seg.running   { background: var(--good); opacity: 0.85; animation: pulse 1.4s infinite; }
+  .gantt .run-bar .seg.done      { background: var(--accent); opacity: 0.65; }
+  .gantt .run-elapsed { color: var(--fg-faint); font-size: 0.72rem; }
+
+  /* ── Metrics matrix ──────────────────────────────────────── */
+  .metric-grid {
+    display: grid;
+    gap: 6px;
+  }
+  .metric-row {
+    display: grid;
+    grid-template-columns: 130px 60px 70px 1fr;
+    gap: 10px;
+    align-items: center;
+    font-size: 0.8rem;
+  }
+  .metric-row .name { color: var(--fg-dim); font-family: var(--mono); font-size: 0.78rem; }
+  .metric-row .val  { color: var(--fg); font-family: var(--mono); font-size: 0.92rem; font-weight: 600; text-align: right; }
+  .metric-row .val.good { color: var(--good); }
+  .metric-row .val.warn { color: var(--warn); }
+  .metric-row .val.bad  { color: var(--bad); }
+  .metric-row .n    { color: var(--fg-faint); font-size: 0.7rem; font-family: var(--mono); }
+  .bar-wrap { background: var(--bg-deep); height: 14px; border-radius: 4px; overflow: hidden; position: relative; }
+  .bar { height: 100%; background: linear-gradient(90deg, var(--bad) 0%, var(--warn) 50%, var(--good) 85%); transition: width 0.4s ease; }
+  .bar-target { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+
+  /* ── Files list ──────────────────────────────────────────── */
+  .file-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 0.76rem;
+    font-family: var(--mono);
+  }
+  .file-row .name { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-row .size { color: var(--fg-faint); margin-left: 8px; }
+
+  /* ── Comments ───────────────────────────────────────────── */
+  .comment {
+    background: var(--bg-deep);
+    border-left: 3px solid var(--accent-purple);
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    max-height: 14em;
+    overflow-y: auto;
+    font-family: var(--mono);
+  }
+  .comment .author { color: var(--accent-purple); font-weight: bold; font-size: 0.72rem; }
+  .comment .ts { color: var(--fg-faint); font-size: 0.7rem; margin-left: 6px; }
+  .comment .body { color: var(--fg); margin-top: 4px; }
+
+  /* ── STATE.json viewer ───────────────────────────────────── */
+  pre.state-json {
+    color: var(--fg);
+    background: var(--bg-deep);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    max-height: 14em;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  pre.state-json .k { color: var(--accent); }
+  pre.state-json .s { color: var(--good); }
+  pre.state-json .n { color: var(--warn); }
+  pre.state-json .b { color: var(--accent-purple); }
+  pre.state-json .x { color: var(--fg-faint); }
+
+  /* ── Detached jobs ───────────────────────────────────────── */
+  .job {
+    background: var(--bg-deep);
+    border: 1px solid var(--border-dim);
+    border-left: 3px solid var(--good);
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-family: var(--mono);
+  }
+  .job.dead { border-left-color: var(--fg-faint); opacity: 0.7; }
+  .job .row { display: flex; gap: 8px; align-items: baseline; }
+  .job .row .lbl { color: var(--fg-faint); font-size: 0.68rem; }
+  .job .row .v { color: var(--fg); }
+</style>
+</head>
+<body>
+<header>
+  <h1>
+    📊 <span id="profile-name">researcher</span>
+    <span class="sep">/</span>
+    <span class="task-title" id="task-title">…</span>
+  </h1>
+  <span class="pill" id="task-status"><span class="dot"></span><span id="status-text">?</span></span>
+  <span class="pill" id="current-run">run #?</span>
+  <span class="pill" id="runs-total">runs ?</span>
+  <span class="pill" id="last-tick">poll: —</span>
+  <span class="pill" id="conn-status">connecting…</span>
+</header>
+
+<!-- Hero: what's happening NOW -->
+<div style="max-width:1600px;margin:0 auto;padding:14px 14px 0;">
+  <div class="hero" id="hero-card">
+    <div class="hero-row">
+      <div class="hero-cell">
+        <div class="label">phase</div>
+        <div class="value big" id="hero-phase">—</div>
+      </div>
+      <div class="hero-cell">
+        <div class="label">next action</div>
+        <div class="value" id="hero-next">—</div>
+      </div>
+      <div class="hero-cell">
+        <div class="label">last heartbeat</div>
+        <div class="value"><pre id="hero-heartbeat">—</pre></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<main>
+  <!-- LEFT COLUMN (wider) — agent timeline + comments -->
+  <div class="col">
+
+    <div class="panel scroll" id="agent-panel-card">
+      <header class="panel-head">
+        <h2>🛠️ Tool call timeline (live)</h2>
+        <span class="panel-meta" id="agent-meta">—</span>
+      </header>
+      <div class="panel-body" id="agent-panel"><div class="empty">no tool calls yet</div></div>
+    </div>
+
+    <div class="panel scroll" id="comments-panel-card">
+      <header class="panel-head">
+        <h2>💬 Comments</h2>
+        <span class="panel-meta" id="comments-meta">—</span>
+      </header>
+      <div class="panel-body" id="comments-panel"><div class="empty">no comments</div></div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN — metrics + runs + events + state + jobs + files -->
+  <div class="col">
+
+    <div class="panel" id="metrics-panel-card">
+      <header class="panel-head"><h2>📈 Metrics trajectory</h2><span class="panel-meta" id="metrics-meta">target ≥ 0.85</span></header>
+      <div class="panel-body" id="metrics-panel"><div class="empty">no experiment results yet</div></div>
+    </div>
+
+    <div class="panel" id="runs-panel-card">
+      <header class="panel-head"><h2>⏱️ Runs (gantt)</h2><span class="panel-meta" id="runs-meta">—</span></header>
+      <div class="panel-body" id="runs-panel"><div class="empty">no runs yet</div></div>
+    </div>
+
+    <div class="panel scroll" id="events-panel-card">
+      <header class="panel-head"><h2>📜 Kanban events</h2><span class="panel-meta" id="events-meta">—</span></header>
+      <div class="panel-body" id="events-panel"><div class="empty">no events</div></div>
+    </div>
+
+    <div class="panel" id="jobs-panel-card">
+      <header class="panel-head"><h2>⚙️ Detached jobs</h2><span class="panel-meta" id="jobs-meta">—</span></header>
+      <div class="panel-body" id="jobs-panel"><div class="empty">no detached jobs</div></div>
+    </div>
+
+    <div class="panel" id="state-panel-card">
+      <header class="panel-head"><h2>🗂️ STATE.json</h2><span class="panel-meta" id="state-meta">—</span></header>
+      <div class="panel-body"><pre class="state-json" id="state-json">(loading…)</pre></div>
+    </div>
+
+    <div class="panel scroll" id="files-panel-card">
+      <header class="panel-head"><h2>📁 Workspace files</h2><span class="panel-meta" id="files-meta">—</span></header>
+      <div class="panel-body" id="files-panel"><div class="empty">empty</div></div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  const wsUrl = `ws://${location.host}/ws`;
+  let ws;
+
+  function fmtTs(t) {
+    if (!t) return '?';
+    if (typeof t === 'number' && t < 1e12) t *= 1000;
+    if (typeof t === 'string') t = new Date(t).getTime();
+    if (!t) return '?';
+    return new Date(t).toLocaleTimeString();
+  }
+  function fmtAgo(t) {
+    if (!t) return '';
+    if (typeof t === 'number' && t < 1e12) t *= 1000;
+    if (typeof t === 'string') t = new Date(t).getTime();
+    const diff = Math.floor((Date.now() - t) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    return `${Math.floor(diff/3600)}h ago`;
+  }
+  function fmtDur(start, end) {
+    if (!start) return '';
+    if (typeof start === 'string') start = new Date(start).getTime();
+    if (typeof start === 'number' && start < 1e12) start *= 1000;
+    const e = end ? (typeof end === 'string' ? new Date(end).getTime() : (end < 1e12 ? end*1000 : end)) : Date.now();
+    const s = Math.floor((e - start)/1000);
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s/60)}m${s%60}s`;
+  }
+  function fmtBytes(n) {
+    if (!n) return '0B';
+    if (n < 1024) return `${n}B`;
+    if (n < 1024*1024) return `${(n/1024).toFixed(1)}K`;
+    return `${(n/1024/1024).toFixed(1)}M`;
+  }
+  function esc(s) { return (s ?? '').toString().replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+  function highlightJson(j) {
+    return j.replace(/("[^"\\]*(?:\\.[^"\\]*)*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+      (m, str, colon, bool, num) => {
+        if (str) return `<span class="${colon ? 'k' : 's'}">${m}</span>`;
+        if (bool) return `<span class="b">${m}</span>`;
+        if (num) return `<span class="n">${m}</span>`;
+        return m;
+      });
+  }
+
+  function setConn(state, label) {
+    const el = document.getElementById('conn-status');
+    el.className = 'pill ' + (state === 'on' ? 'status-running' : 'status-crashed');
+    el.innerHTML = (state === 'on' ? '<span class="dot"></span>' : '') + (label || (state === 'on' ? 'connected' : 'disconnected'));
+  }
+
+  function connect() {
+    ws = new WebSocket(wsUrl);
+    ws.onopen = () => setConn('on', 'live');
+    ws.onclose = () => { setConn('off', 'disconnected — retrying'); setTimeout(connect, 2000); };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+    ws.onmessage = evt => { try { handle(JSON.parse(evt.data)); } catch (e) { console.error(e); } };
+  }
+  let lastTickMs = 0;
+  let pollMs = 3000;
+
+  // Flash management: only flash panels when their data actually CHANGED
+  // (not on the initial bulk snapshot pushed on WS connect).
+  const lastPayloadHash = {};       // type → hash string
+  const seenTypes = new Set();      // suppress flash on first receive of each type
+  function flash(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 700);
+  }
+  function flashIfChanged(type, data, panelIds) {
+    const h = JSON.stringify(data);
+    const isFirst = !seenTypes.has(type);
+    const changed = h !== lastPayloadHash[type];
+    lastPayloadHash[type] = h;
+    seenTypes.add(type);
+    if (isFirst || !changed) return;
+    for (const id of (Array.isArray(panelIds) ? panelIds : [panelIds])) flash(id);
+  }
+
+  function handle(msg) {
+    switch (msg.type) {
+      case 'status':       renderStatus(msg.data);       flashIfChanged('status', msg.data, ['runs-panel-card','comments-panel-card']); break;
+      case 'agent':        renderAgent(msg.data);        flashIfChanged('agent', msg.data, 'agent-panel-card'); break;
+      case 'heartbeat':    renderHeartbeat(msg.data);    flashIfChanged('heartbeat', msg.data, 'hero-card'); break;
+      case 'kanban_event': renderEvents(msg.data);       flashIfChanged('kanban_event', msg.data, 'events-panel-card'); break;
+      case 'state':        renderState(msg.data);        flashIfChanged('state', msg.data, ['state-panel-card','jobs-panel-card','hero-card']); break;
+      case 'metrics':      renderMetrics(msg.data);      flashIfChanged('metrics', msg.data, 'metrics-panel-card'); break;
+      case 'files':        renderFiles(msg.data);        flashIfChanged('files', msg.data, 'files-panel-card'); break;
+      case 'tick':         lastTickMs = msg.data?.ts || Date.now(); pollMs = msg.data?.poll_ms || pollMs; renderTick(); break;
+    }
+  }
+  function renderTick() {
+    const el = document.getElementById('last-tick');
+    if (!lastTickMs) { el.textContent = 'poll: —'; return; }
+    const ago = Math.max(0, Math.floor((Date.now() - lastTickMs)/1000));
+    el.textContent = `poll: ${ago}s ago · every ${pollMs/1000}s`;
+    // visual degrade if no tick for > 2x poll interval
+    el.className = 'pill ' + (ago > (pollMs/1000)*3 ? 'status-crashed' : 'status-running');
+  }
+  setInterval(renderTick, 1000); // tick the displayed-age every second
+
+  function renderStatus(d) {
+    if (!d) return;
+    document.getElementById('task-title').textContent = d.title || d.task_id || '?';
+    document.getElementById('profile-name').textContent = d.profile || 'researcher';
+    const status = (d.status || '?').toLowerCase();
+    const statusEl = document.getElementById('task-status');
+    statusEl.className = `pill status-${status}`;
+    statusEl.querySelector('#status-text').textContent = status;
+    const runs = d.runs || [];
+    document.getElementById('current-run').textContent = `run #${d.current_run_id ?? '?'}`;
+    document.getElementById('runs-total').textContent = `${runs.length} run${runs.length===1?'':'s'}`;
+    document.getElementById('runs-meta').textContent = `${runs.length} total`;
+
+    // Runs gantt
+    const gp = document.getElementById('runs-panel');
+    if (runs.length === 0) gp.innerHTML = '<div class="empty">no runs yet</div>';
+    else {
+      // compute time range
+      const starts = runs.map(r => r.started_at).filter(Boolean);
+      const ends   = runs.map(r => r.ended_at || Date.now()/1000).filter(Boolean);
+      const t0 = Math.min(...starts);
+      const t1 = Math.max(...ends, ...starts);
+      const span = Math.max(t1 - t0, 1);
+      gp.innerHTML = `<div class="gantt">${runs.map(r => {
+        const s = r.started_at ? Math.max(0, (r.started_at - t0) / span) : 0;
+        const e = (r.ended_at || (Date.now()/1000)) - t0;
+        const w = Math.max(0.01, (e - (r.started_at - t0)) / span);
+        const cls = r.outcome || r.status || 'running';
+        return `
+          <div class="run-id">#${r.id} <span class="${cls === 'running' ? 'good' : ''}">${cls}</span></div>
+          <div class="run-bar"><div class="seg ${cls}" style="left:${(s*100).toFixed(1)}%;width:${(w*100).toFixed(1)}%" title="${cls}"></div></div>
+          <div class="run-elapsed">${fmtDur(r.started_at, r.ended_at)}</div>`;
+      }).join('')}</div>`;
+    }
+
+    // Comments
+    const cp = document.getElementById('comments-panel');
+    const comments = d.comments || [];
+    document.getElementById('comments-meta').textContent = `${comments.length} recent`;
+    if (comments.length === 0) cp.innerHTML = '<div class="empty">no comments</div>';
+    else {
+      cp.innerHTML = comments.slice().reverse().map(c => `
+        <div class="comment">
+          <span class="author">${esc(c.author || '?')}</span><span class="ts">${fmtTs(c.created_at)} · ${fmtAgo(c.created_at)}</span>
+          <div class="body">${esc(c.body || '').slice(0,3000)}</div>
+        </div>
+      `).join('');
+    }
+  }
+
+  function renderAgent(turns) {
+    const panel = document.getElementById('agent-panel');
+    if (!turns || turns.length === 0) { panel.innerHTML = '<div class="empty">no tool calls yet</div>'; return; }
+    const tools = turns.reduce((a,t) => a + (t.tool_calls?.length || 0), 0);
+    document.getElementById('agent-meta').textContent = `${turns.length} msgs · ${tools} tool calls`;
+    // Most-recent first
+    const recent = turns.slice(-50).reverse();
+    panel.innerHTML = recent.map(t => {
+      const tcs = (t.tool_calls || []).map(tc =>
+        `<div class="tool-call">${esc(tc.name)} <span class="args">${esc(tc.args_short).slice(0,260)}</span></div>`
+      ).join('');
+      const content = t.content_preview ? `<div class="content">${esc(t.content_preview)}</div>` : '';
+      const tcCount = (t.tool_calls||[]).length;
+      const tcLabel = tcCount ? ` · ${tcCount} tool call${tcCount>1?'s':''}` : '';
+      return `<div class="turn ${esc(t.role)}">
+        <div class="meta">#${t.idx} · ${esc(t.role)}${tcLabel}</div>
+        ${content}
+        ${tcs}
+      </div>`;
+    }).join('');
+  }
+
+  function renderHeartbeat(d) {
+    const el = document.getElementById('hero-heartbeat');
+    if (!d || !d.last_note) { el.textContent = '—'; return; }
+    el.textContent = d.last_note;
+  }
+
+  function renderEvents(events) {
+    const panel = document.getElementById('events-panel');
+    document.getElementById('events-meta').textContent = `${events?.length || 0} recent`;
+    if (!events || events.length === 0) { panel.innerHTML = '<div class="empty">no events</div>'; return; }
+    panel.innerHTML = events.slice().reverse().map(e => {
+      let body = '';
+      if (e.payload && typeof e.payload === 'object') {
+        if (e.kind === 'heartbeat' && e.payload.note) body = e.payload.note;
+        else if (e.kind === 'blocked' && e.payload.reason) body = e.payload.reason;
+        else if (e.kind === 'spawned' && e.payload.pid) body = `pid ${e.payload.pid}`;
+        else if (e.kind === 'gave_up') body = `failures=${e.payload.failures}/${e.payload.effective_limit} ${e.payload.error || ''}`;
+        else if (e.kind === 'crashed') body = e.payload.error || `pid ${e.payload.pid}`;
+        else if (e.kind === 'commented') body = `author=${e.payload.author} len=${e.payload.len}`;
+        else body = Object.entries(e.payload).map(([k,v]) => `${k}=${typeof v==='object'?JSON.stringify(v).slice(0,40):String(v).slice(0,80)}`).join(' ');
+      }
+      return `<div class="event">
+        <span class="ts">${fmtTs(e.created_at)}</span>
+        <span class="kind ${esc(e.kind)}">${esc(e.kind)}</span>
+        ${e.run_id != null ? `<span class="run-id">#${e.run_id}</span>` : ''}
+        <span class="body">${esc(body).slice(0,400)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderState(s) {
+    const heroPhase = document.getElementById('hero-phase');
+    const heroNext = document.getElementById('hero-next');
+    const stateEl = document.getElementById('state-json');
+    const stateMeta = document.getElementById('state-meta');
+    if (!s) { stateEl.textContent = '(none)'; heroPhase.textContent='—'; heroNext.textContent='—'; return; }
+    heroPhase.textContent = s.phase || '—';
+    heroNext.textContent = s.next_action_detail || s.next_action || '—';
+    stateMeta.textContent = s.task_id ? `task ${s.task_id}` : '';
+    stateEl.innerHTML = highlightJson(esc(JSON.stringify(s, null, 2)));
+
+    // Detached jobs
+    const jp = document.getElementById('jobs-panel');
+    const jobs = s.detached_jobs || [];
+    document.getElementById('jobs-meta').textContent = `${jobs.length}`;
+    if (jobs.length === 0) jp.innerHTML = '<div class="empty">no detached jobs</div>';
+    else {
+      jp.innerHTML = jobs.map(j => `
+        <div class="job">
+          <div class="row"><span class="lbl">purpose</span><span class="v">${esc(j.purpose || '?')}</span></div>
+          <div class="row"><span class="lbl">pid</span><span class="v">${j.pid ?? '?'}</span></div>
+          <div class="row"><span class="lbl">started</span><span class="v">${fmtTs(j.started_at)}  ${fmtAgo(j.started_at)}</span></div>
+          ${j.log_path ? `<div class="row"><span class="lbl">log</span><span class="v">${esc(j.log_path)}</span></div>` : ''}
+          ${j.expected_artifacts ? `<div class="row"><span class="lbl">artifacts</span><span class="v">${j.expected_artifacts.length}</span></div>` : ''}
+        </div>
+      `).join('');
+    }
+  }
+
+  function renderMetrics(runs) {
+    const panel = document.getElementById('metrics-panel');
+    if (!runs || runs.length === 0) { panel.innerHTML = '<div class="empty">no experiment results yet</div>'; return; }
+    document.getElementById('metrics-meta').textContent = `${runs.length} runs · target ≥ 0.85`;
+    const TARGET = 0.85;
+    panel.innerHTML = `<div class="metric-grid">${runs.map(run => {
+      const mean = run.mean;
+      const pct = mean != null ? Math.round(mean * 100) : 0;
+      const cls = mean == null ? 'muted' : (mean >= 0.85 ? 'good' : mean >= 0.5 ? 'warn' : 'bad');
+      return `
+        <div class="metric-row">
+          <span class="name">${esc(run.run)}</span>
+          <span class="val ${cls}">${mean != null ? mean.toFixed(3) : '—'}</span>
+          <span class="n">N=${run.variants.length}</span>
+          <div class="bar-wrap" title="target ${TARGET}">
+            <div class="bar" style="width:${pct}%"></div>
+            <div class="bar-target" style="left:${TARGET*100}%" title="target"></div>
+          </div>
+        </div>
+      `;
+    }).join('')}</div>`;
+  }
+
+  function renderFiles(files) {
+    const panel = document.getElementById('files-panel');
+    document.getElementById('files-meta').textContent = `${files?.length || 0}`;
+    if (!files || files.length === 0) { panel.innerHTML = '<div class="empty">empty</div>'; return; }
+    panel.innerHTML = files.slice(0, 30).map(f => `
+      <div class="file-row">
+        <span class="name">${esc(f.name)}${f.is_dir ? '/' : ''}</span>
+        <span class="size">${fmtBytes(f.size)}</span>
+      </div>
+    `).join('');
+  }
+
+  connect();
+</script>
+</body>
+</html>

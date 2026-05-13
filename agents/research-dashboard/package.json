@@ -1,0 +1,13 @@
+{
+  "name": "daemoncraft-research-dashboard",
+  "version": "0.1.0",
+  "description": "Live dashboard for the hermes researcher profile — mirrors bot/server.js dashboard pattern, sources data from session JSONL + kanban DB + workspace STATE.json + experiment result files.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
