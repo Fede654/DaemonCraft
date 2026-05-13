@@ -1,0 +1,61 @@
+# 007 — In-intent replanning hint (workaround for previous_error regression)
+#
+# Background: experiment 003 showed `previous_error` is 100% ignored
+# by gemma-andy:e4b-v2-2-3-q8_0. Mariano retrain target. But meanwhile,
+# can Hermes work around it by encoding the failure narrative directly
+# in the `high_level_command` (intent) field instead of the structured
+# `previous_error`?
+#
+# Hypothesis: Failure context in the intent text DOES shift the plan,
+# even though structured previous_error doesn't.
+#
+# This matters because if true, Hermes can compose recovery intents
+# without depending on a model retrain.
+
+id: 007-in-intent-replan
+hypothesis: "In-intent failure narration shifts the plan where structured previous_error fails"
+fixture: forest_with_player
+samples_per_variant: 5
+
+variants:
+  - id: control_no_context
+    primitives:
+      intent: "build a wall with 4 oak_log blocks"
+
+  - id: previous_error_only
+    primitives:
+      intent: "build a wall with 4 oak_log blocks"
+      previous_error:
+        tool: place_block
+        error_type: bot_action_failed
+        details: "No oak_log in inventory. You have: oak_planks(40), leaf_litter(5), stick(2). Use oak_planks instead, or scan + mine oak_log first."
+
+  - id: in_intent_narrative
+    primitives:
+      intent: "We tried to build a wall with oak_log but the inventory has no oak_log — only oak_planks(40), leaf_litter(5), stick(2). Use oak_planks instead and place 4 of them in a line at the player's position."
+
+  - id: in_intent_directive
+    primitives:
+      intent: "Place 4 oak_planks blocks (NOT oak_log) in a horizontal line at the player's position. We have 40 oak_planks in inventory, no oak_log."
+
+expectations:
+  must_invoke_embodied_plan: true
+  tool_calls_must_include_any_of: [place_block, fill_volume]
+  # Critical: model must NOT request oak_log (that's the failure to detect)
+  # We can't directly assert "block != oak_log" via expectations field —
+  # check manually in results JSON.
+  max_elapsed_seconds: 30
+  operational_risk_in: [none, low, medium]
+
+metrics_to_capture:
+  - success_rate
+  - latency_p50
+  - tool_call_count
+  - mitigation_rate
+  - tool_calls_emitted
+
+# Read by checking which block name appears in place_block.arguments.block:
+# - control_no_context: model picks oak_log (no info)
+# - previous_error_only: model ignores error → picks oak_log (regression confirmed in 003)
+# - in_intent_narrative: HYPOTHESIS — model uses oak_planks (works around regression)
+# - in_intent_directive: HYPOTHESIS — strongest, explicit "NOT oak_log"

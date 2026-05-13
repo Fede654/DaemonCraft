@@ -1,0 +1,54 @@
+# 006 — Conditional logic compliance
+#
+# Hypothesis: Gemma-Andy honors "if X then Y else Z" branching in the
+# intent text, instead of flattening to "do Y" or "do Z" regardless of
+# inventory state.
+#
+# Field-test 2026-05-09 documented `conditional_logic_flattening`
+# regression. Now testing if explicit phrasing (Spanish vs English vs
+# imperative-split) affects compliance.
+#
+# In our fixture: bot has oak_planks(40), no oak_log. Conditional
+# branches must use this state to choose correctly.
+
+id: 006-conditional-logic
+hypothesis: "Imperative-split intents (separate sentences for branches) honor conditionals better than inline if-then phrasing"
+fixture: forest_with_player
+samples_per_variant: 5
+
+variants:
+  - id: spanish_inline
+    primitives:
+      intent: "si tenés oak_planks decime cuántos. si no, andá a juntar"
+
+  - id: english_inline
+    primitives:
+      intent: "If you have oak_planks, tell me how many. Otherwise, go gather."
+
+  - id: imperative_split
+    primitives:
+      intent: "Check your inventory. If oak_planks count is greater than zero, emit ask_clarification reporting the count. Otherwise, scan for oak_log and mine 4."
+
+  - id: branch_keywords
+    primitives:
+      intent: "Branch A (oak_planks present in inventory): emit ask_clarification with the count. Branch B (oak_planks absent): scan_nearby for oak_log and mine 4."
+
+expectations:
+  must_invoke_embodied_plan: true
+  # In our fixture (oak_planks:40), the model SHOULD pick branch A
+  # (report count via ask_clarification or get_inventory + ask).
+  # Branch B (gather) would indicate it's NOT honoring the conditional.
+  tool_calls_must_include_any_of: [ask_clarification, get_inventory]
+  tool_calls_must_not_include: [mine_block, mine_blocks]  # Branch B is wrong for this fixture
+  max_elapsed_seconds: 30
+  operational_risk_in: [none, low, medium]
+
+metrics_to_capture:
+  - success_rate
+  - latency_p50
+  - tool_call_count
+  - mitigation_rate
+  - tool_calls_emitted
+
+# Reading: passes = model honored the conditional. Failures = model
+# flattened (probably went to branch B regardless of inventory).

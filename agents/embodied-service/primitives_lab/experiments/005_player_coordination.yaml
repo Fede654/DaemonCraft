@@ -1,0 +1,48 @@
+# 005 — Player coordination
+#
+# Hypothesis: When the player is the target/recipient of an action,
+# Gemma-Andy correctly emits target_type='entity' with target=<username>,
+# rather than coords or fabricated targets.
+#
+# Tests: "give to player", "follow player", "stand next to player",
+# "guard the player".
+
+id: 005-player-coordination
+hypothesis: "Player-as-target intents produce target_type='entity' with the correct username"
+fixture: forest_with_player
+samples_per_variant: 5
+
+variants:
+  - id: give_es
+    primitives:
+      intent: "dame 2 oak_planks"
+
+  - id: give_en_imperative
+    primitives:
+      intent: "Toss 2 oak_planks to the player named Fede3043."
+
+  - id: follow_es
+    primitives:
+      intent: "seguime"
+
+  - id: follow_en
+    primitives:
+      intent: "Follow the player named Fede3043 wherever they go."
+
+  - id: stand_near_en
+    primitives:
+      intent: "Stand directly next to player Fede3043 within 2 blocks. Do not act further."
+      allowed_tools: [scan_nearby, goto, follow, stop_movement, ask_clarification, raise_guardian_event]
+
+expectations:
+  must_invoke_embodied_plan: true
+  tool_calls_must_include_any_of: [toss_item, follow, goto]
+  max_elapsed_seconds: 30
+  operational_risk_in: [none, low, medium]
+
+metrics_to_capture:
+  - success_rate
+  - latency_p50
+  - tool_call_count
+  - mitigation_rate
+  - tool_calls_emitted

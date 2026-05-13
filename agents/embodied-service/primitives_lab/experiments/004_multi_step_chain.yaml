@@ -1,0 +1,52 @@
+# 004 — Multi-step chain coherence
+#
+# Hypothesis: Gemma-Andy can decompose a SINGLE rich intent that spans
+# multiple body action categories (gather + craft + place) into an
+# ordered multi-stage plan with correct intermediate state.
+#
+# Field-test 2026-05-09 saw that for "construyamos casa, juntá madera"
+# the model emitted only scan_nearby. Now testing with English-imperative
+# (lesson 2: works) and explicit stage enumeration.
+
+id: 004-multi-step-chain
+hypothesis: "Verbose English intent with explicit stage enumeration produces multi-stage plan"
+fixture: forest_with_player
+samples_per_variant: 5
+
+variants:
+  - id: combined_terse
+    primitives:
+      intent: "junta madera y construí una pared de 4 bloques"
+
+  - id: combined_verbose_es
+    primitives:
+      intent: "Necesito una pared de 4 bloques. Si no tenés madera, juntá oak_log primero, después craftealos en oak_planks y poné los 4 bloques."
+
+  - id: combined_imperative_en
+    primitives:
+      intent: "Build a 4-block wall. Step 1: scan for oak_log nearby. Step 2: mine 4 oak_log. Step 3: craft them into 16 oak_planks. Step 4: place 4 oak_planks in a horizontal line at the player's position."
+
+  - id: combined_natural_en
+    primitives:
+      intent: "Build me a wall using wood from nearby trees — gather 4 oak logs, craft them into planks, then place 4 planks where the player stands."
+
+expectations:
+  must_invoke_embodied_plan: true
+  # Must emit at least gather + place (or build_blueprint as composite)
+  tool_calls_must_include_any_of: [mine_block, mine_blocks, place_block, fill_volume, build_blueprint]
+  max_elapsed_seconds: 60
+  operational_risk_in: [none, low, medium]
+
+metrics_to_capture:
+  - success_rate
+  - latency_p50
+  - tool_call_count
+  - mitigation_rate
+  - tool_calls_emitted
+
+# Reading expected:
+# - terse: probably collapses to single tool, low coverage
+# - verbose_es: should be richer than terse (lesson 1) but Spanish may
+#   trigger verification-pattern (lesson 2)
+# - imperative_en stage-enumerated: most likely to produce 4+ tool plan
+# - natural_en: balance — verbose, English, but not stage-enumerated
