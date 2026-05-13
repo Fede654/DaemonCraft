@@ -139,6 +139,20 @@ def score_sample(response: dict, expectations: dict) -> tuple[bool, list[str]]:
         if response.get("ok") is None or not (plan.get("body_plan") or plan.get("tool_calls")):
             failures.append("expected embodied_plan invocation; service produced no plan")
 
+    # True intent_excellence_rate requires ALL bot dispatches to succeed
+    if response.get("ok") is False:
+        failed_results = [r for r in (response.get("execution_results") or []) if not r.get("ok")]
+        if failed_results:
+            parts = [
+                f"{r.get('tool', '?')}: {r.get('error_type') or 'no_error_type'} ({r.get('details') or 'no_details'})"
+                for r in failed_results
+            ]
+            failures.append(f"bot/service dispatch failed: {'; '.join(parts)}")
+        else:
+            err = response.get("error") or {}
+            details = err.get("details") or err.get("error_type") or "no execution_results and no error block"
+            failures.append(f"bot/service dispatch failed: {details}")
+
     must_inc_any = expectations.get("tool_calls_must_include_any_of")
     if must_inc_any:
         if not any(t in tool_names for t in must_inc_any):
@@ -301,7 +315,9 @@ def main():
             extras = []
             if s["mitigations"]: extras.append(f"mit={s['mitigations']}")
             if s["failures"]: extras.append(f"fail={s['failures']}")
-            print(f"    {mark} #{s['iter']} {s['service_elapsed_s']:.1f}s tools={s['tool_names']} {' '.join(extras)}")
+            elapsed = s['service_elapsed_s']
+            elapsed_str = f"{elapsed:.1f}s" if elapsed is not None else "N/A"
+            print(f"    {mark} #{s['iter']} {elapsed_str} tools={s['tool_names']} {' '.join(extras)}")
 
     # Save full output
     args.output_dir.mkdir(parents=True, exist_ok=True)
