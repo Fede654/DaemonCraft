@@ -1692,7 +1692,7 @@ const ACTIONS = {
     const b = ensureBot();
     const goal = new goals.GoalBlock(Math.floor(x), Math.floor(y), Math.floor(z));
     // Timeout after 15s to prevent blocking the agent forever
-    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000));
+    const timeout = new Promise((_, rej) => setTimeout(() => { b.pathfinder.stop(); rej(new Error('timeout')); }, 15000));
     try {
       await Promise.race([b.pathfinder.goto(goal), timeout]);
       return { result: `Arrived at ${fmt(x)}, ${fmt(y)}, ${fmt(z)}` };
@@ -1707,7 +1707,7 @@ const ACTIONS = {
   async goto_near({ x, y, z, range = 2 }) {
     const b = ensureBot();
     const goal = new goals.GoalNear(Math.floor(x), Math.floor(y), Math.floor(z), range);
-    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000));
+    const timeout = new Promise((_, rej) => setTimeout(() => { b.pathfinder.stop(); rej(new Error('timeout')); }, 15000));
     try {
       await Promise.race([b.pathfinder.goto(goal), timeout]);
       return { result: `Arrived near ${fmt(x)}, ${fmt(y)}, ${fmt(z)}` };
@@ -1797,7 +1797,8 @@ async collect({ block, count = 1 }) {
         if (!target || target.name !== block) continue;
         await b.tool.equipForBlock(target);
         if (b.entity.position.distanceTo(pos) > 4.5) {
-          await b.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3));
+          const timeout = new Promise((_, rej) => setTimeout(() => { b.pathfinder.stop(); rej(new Error('timeout')); }, 15000));
+          await Promise.race([b.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3)), timeout]);
         }
         await b.dig(target, true);
         collected++;
@@ -1864,7 +1865,8 @@ async collect({ block, count = 1 }) {
     }
     await b.tool.equipForBlock(target);
     if (b.entity.position.distanceTo(target.position) > 4.5) {
-      await b.pathfinder.goto(new goals.GoalNear(x, y, z, 3));
+      const timeout = new Promise((_, rej) => setTimeout(() => { b.pathfinder.stop(); rej(new Error('timeout')); }, 15000));
+      await Promise.race([b.pathfinder.goto(new goals.GoalNear(x, y, z, 3)), timeout]);
     }
     await b.dig(target, true);
     return { result: `Mined ${target.name} at ${x}, ${y}, ${z}` };
@@ -2165,17 +2167,88 @@ async collect({ block, count = 1 }) {
       throw new Error(`No ${blockName} in inventory. ${hint} Collect, craft, or pick up ${blockName} first.`);
     }
 
-    const targetPos = new Vec3(x, y, z);
-    const existing = b.blockAt(targetPos);
+    let targetPos = new Vec3(x, y, z);
+    let existing = b.blockAt(targetPos);
+    // leaf_litter is non-solid (instant-break decoration) — dig it so placement can proceed
+    if (existing && existing.name === 'leaf_litter') {
+      await b.dig(existing);
+      existing = b.blockAt(targetPos);
+    }
+    const GROUND_BLOCKS = new Set(['grass_block','dirt','coarse_dirt','podzol','mycelium','stone','granite','diorite','andesite','deepslate','tuff','calcite','dirt_path','farmland','snow_block','sand','red_sand','gravel']);
     if (existing && existing.name !== 'air' && existing.name !== 'cave_air') {
-      throw new Error(`Can't place ${blockName} at ${x}, ${y}, ${z}: target space is occupied by ${existing.name}. Dig that block first or choose an empty adjacent space.`);
+      const above = b.blockAt(targetPos.offset(0, 1, 0));
+      const abovePassable = above && (above.name === 'air' || above.name === 'cave_air' || above.name.endsWith('_leaves') || above.name === 'leaf_litter');
+      if (GROUND_BLOCKS.has(existing.name) && abovePassable) {
+        targetPos = targetPos.offset(0, 1, 0);
+        y += 1;
+        const existing2 = b.blockAt(targetPos);
+        if (existing2 && existing2.name !== 'air' && existing2.name !== 'cave_air' && existing2.name !== 'leaf_litter') {
+          throw new Error(`Can't place ${blockName} at ${x}, ${y}, ${z}: target space is occupied by ${existing2.name}. Dig that block first or choose an empty adjacent space.`);
+        }
+        // leaf_litter at promoted pos: dig it too
+        if (existing2 && existing2.name === 'leaf_litter') {
+          await b.dig(existing2);
+        }
+      } else {
+        throw new Error(`Can't place ${blockName} at ${x}, ${y}, ${z}: target space is occupied by ${existing.name}. Dig that block first or choose an empty adjacent space.`);
+      }
+    }
+
+    // ── Avoid placing inside the bot's body (including y-promoted targets) ──
+    const botPos = b.entity.position;
+    const botOverlapsTarget = (
+      Math.abs(botPos.x - (targetPos.x + 0.5)) < 0.8 &&
+      botPos.y < targetPos.y + 1 &&
+      botPos.y + 1.8 > targetPos.y &&
+      Math.abs(botPos.z - (targetPos.z + 0.5)) < 0.8
+    );
+    if (botOverlapsTarget) {
+      const dirs = [[1,0], [-1,0], [0,1], [0,-1]];
+      let moved = false;
+      for (const [dx, dz] of dirs) {
+        const neighbor = targetPos.offset(dx, 0, dz);
+        const nBlock = b.blockAt(neighbor);
+        const nBelow = b.blockAt(neighbor.offset(0, -1, 0));
+        if (nBelow && nBelow.name !== 'air' && nBelow.name !== 'cave_air' && (!nBlock || nBlock.name === 'air' || nBlock.name === 'cave_air')) {
+          targetPos = neighbor;
+          x += dx;
+          z += dz;
+          moved = true;
+          break;
+        }
+      }
+      if (!moved) {
+        throw new Error(`Can't place ${blockName} at ${x}, ${y}, ${z}: target overlaps bot and no valid adjacent space found.`);
+      }
+    }
+
+    // ── Step back if bot is inside target ──
+    const botBlockPos = b.entity.position.floored();
+    if (botBlockPos.x === targetPos.x && botBlockPos.y === targetPos.y && botBlockPos.z === targetPos.z) {
+      const dirs = [[1,0,0], [-1,0,0], [0,0,1], [0,0,-1]];
+      let moved = false;
+      for (const [dx, dz] of dirs) {
+        const neighbor = targetPos.offset(dx, 0, dz);
+        const nBlock = b.blockAt(neighbor);
+        const nBelow = b.blockAt(neighbor.offset(0, -1, 0));
+        if (nBlock && (nBlock.name === 'air' || nBlock.name === 'cave_air') && nBelow && nBelow.name !== 'air' && nBelow.name !== 'cave_air') {
+          const timeout = new Promise((_, rej) => setTimeout(() => { b.pathfinder.stop(); rej(new Error('timeout')); }, 15000));
+          await Promise.race([b.pathfinder.goto(new goals.GoalNear(neighbor.x, neighbor.y, neighbor.z, 0)), timeout]);
+          moved = true;
+          break;
+        }
+      }
+      if (!moved) {
+        throw new Error(`Can't place ${blockName} at ${x}, ${y}, ${z}: bot is standing in the target space and no adjacent escape found.`);
+      }
     }
 
     await b.equip(item, 'hand');
 
     // Approach if far
     if (b.entity.position.distanceTo(targetPos) > 4.5) {
-      await b.pathfinder.goto(new goals.GoalNear(x, y, z, 3));
+      const timeout = new Promise((_, rej) => setTimeout(() => { b.pathfinder.stop(); rej(new Error('timeout')); }, 15000));
+      await Promise.race([b.pathfinder.goto(new goals.GoalNear(x, y, z, 3)), timeout]);
     }
 
     // Find reference block to place against
@@ -2237,7 +2310,8 @@ async collect({ block, count = 1 }) {
       await b.equip(item, 'hand');
 
       if (b.entity.position.distanceTo(new Vec3(pos.x, pos.y, pos.z)) > 4.5) {
-        try { await b.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3)); } catch {}
+        const timeout = new Promise((_, rej) => setTimeout(() => { b.pathfinder.stop(); rej(new Error('timeout')); }, 15000));
+        try { await Promise.race([b.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3)), timeout]); } catch {}
       }
 
       let hadSupport = false;
